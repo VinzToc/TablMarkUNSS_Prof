@@ -138,7 +138,9 @@ const NIVEAUX = ['AS / Établissement', 'District', 'Départemental', 'Académiq
 const CATS = ['Benjamins', 'Minimes', 'Cadets', 'Juniors', 'Lycées', 'Collèges', 'Sport partagé'];
 const SEXES = ['Filles', 'Garçons', 'Mixte'];
 const NIV_JO = ['', 'Établissement', 'District', 'Départemental', 'Académique', 'National', 'International'];
-const EXTRA_ROLES = [['coach1', 'Jeune coach 1'], ['coach2', 'Jeune coach 2'], ['rep1', 'Jeune reporter 1'], ['rep2', 'Jeune reporter 2']];
+const EXTRA_ROLES = [['coach1', 'Jeune coach équipe A'], ['coach2', 'Jeune coach équipe B'], ['rep1', 'Jeune reporter 1'], ['rep2', 'Jeune reporter 2']];
+const COACH = { A: 'coach1', B: 'coach2' }; const isCoach = k => k === 'coach1' || k === 'coach2';
+const coachTxt = (s, t) => { const o = (s.officiels || {})[COACH[t]] || {}; return o.nom ? `${esc(o.nom)}${o.niv ? ' (' + esc(o.niv) + ')' : ''}` : '—'; };
 const ROLES = {
   co: [['arb1', 'Arbitre 1'], ['arb2', 'Arbitre 2'], ['sec', 'Secrétaire / marqueur'], ['chr', 'Chronométreur'], ['resp', 'Responsable de table'], ...EXTRA_ROLES],
   du: [['arb1', 'Juge-arbitre'], ['arb2', 'Arbitre'], ['sec', 'Marqueur'], ['resp', 'Responsable de table'], ...EXTRA_ROLES]
@@ -292,7 +294,7 @@ function sheetHTML(s) {
     const cols = sp.acts.filter(a => !a[2]);
     for (const t of ['A', 'B']) {
       const st = playerStats(s, t), T = s.teams[t];
-      h += `<h3>Équipe ${t} — ${esc(teamLabel(s, t))}</h3><p class="sh-small">Responsable : ${esc(T.prof)} · Temps morts : ${tmUsed(s, t)}</p>
+      h += `<h3>Équipe ${t} — ${esc(teamLabel(s, t))}</h3><p class="sh-small">Responsable : ${esc(T.prof)} · Jeune coach : ${coachTxt(s, t)} · Temps morts : ${tmUsed(s, t)}</p>
       <table class="sh-t"><tr><th>N°</th><th>Nom Prénom</th><th>Licence</th><th>${sp.acts.some(a => a[2] > 1) ? 'Pts' : 'Buts'}</th>${cols.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr>
       ${st.map(x => `<tr><td>${esc(x.j.n)}${x.j.cap ? ' (C)' : ''}${x.j.gb ? ' GB' : ''}</td><td class="l">${esc(x.j.nom)} ${esc(x.j.prenom)}</td><td>${esc(x.j.lic)}</td><td>${x.pts || ''}</td>${cols.map(c => `<td>${x.c[c[0]] || ''}</td>`).join('')}</tr>`).join('')}</table>`;
     }
@@ -303,9 +305,9 @@ function sheetHTML(s) {
     h += `<p class="sh-small">Format : sets de ${s.cfg.pts} points${s.cfg.max ? ` (plafond ${s.cfg.max})` : ''}, ${s.cfg.sets} sets gagnants.</p>
     <table class="sh-t"><tr><th>Partie</th><th>${esc(teamLabel(s, 'A'))}</th><th>${esc(teamLabel(s, 'B'))}</th><th>Sets</th><th>Vainqueur</th></tr>
     ${s.parties.map(p => { const st = duelState(p, s.cfg, sp.serve); return `<tr><td class="l">${esc(p.lab)}</td><td class="l">${esc(p.a)}</td><td class="l">${esc(p.b)}</td><td>${st.sets.map(x => x[0] + '-' + x[1]).join(' · ')}${!st.done && (st.cur[0] || st.cur[1]) ? ` · (${st.cur[0]}-${st.cur[1]})` : ''}${st.forfeit ? ' forfait' : ''}</td><td>${st.winner ? esc(st.winner === 'A' ? p.a || 'A' : p.b || 'B') : '—'}</td></tr>`; }).join('')}</table>`;
-    for (const t of ['A', 'B']) h += `<p class="sh-small"><b>${esc(teamLabel(s, t))}</b> — responsable : ${esc(s.teams[t].prof)}</p>`;
+    for (const t of ['A', 'B']) h += `<p class="sh-small"><b>${esc(teamLabel(s, t))}</b> — responsable : ${esc(s.teams[t].prof)} · jeune coach : ${coachTxt(s, t)}</p>`;
   }
-  const roles = ROLES[sp.kind];
+  const roles = ROLES[sp.kind].filter(([k]) => !isCoach(k));
   h += `<h3>Jeunes officiels</h3><table class="sh-t"><tr><th>Fonction</th><th>Nom Prénom</th><th>Établissement</th><th>Niveau JO</th></tr>
   ${roles.map(([k, l]) => { const o = s.officiels[k] || {}; return o.nom ? `<tr><td class="l">${l}</td><td class="l">${esc(o.nom)}</td><td>${esc(o.etab)}</td><td>${esc(o.niv)}</td></tr>` : ''; }).join('')}</table>
   <h3>Observations, réserves, incidents</h3><p class="sh-obs">${esc(s.obs || 'Néant').replace(/\n/g, '<br>')}</p>
