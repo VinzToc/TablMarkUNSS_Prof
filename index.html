@@ -135,7 +135,7 @@ table.list tr.click{cursor:pointer}table.list tr.click:hover td{background:rgba(
 <div id="ov"></div><div id="toast" role="status" aria-live="polite"></div><div id="print"></div>
 <script>
 /* ===== TablMarkUNSS — noyau commun (élève + prof) ===== */
-const TMU_VERSION = '1.0';
+const TMU_VERSION = '1.5';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const pad2 = n => String(n).padStart(2, '0');
@@ -362,6 +362,194 @@ function validSheet(o) {
   return o && typeof o === 'object' && typeof o.id === 'string' && SPORTS[o.sport] && o.teams && o.teams.A && o.teams.B && o.meta && (Array.isArray(o.events) || Array.isArray(o.parties));
 }
 function store(key, val) { try { if (val === undefined) return JSON.parse(localStorage.getItem(key) || 'null'); localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return val === undefined ? null : false; } }
+
+/* ===== Exports PDF et Excel de la feuille de match (sans bibliothèque, hors ligne) ===== */
+const coachPlain = (s, t) => { const o = (s.officiels || {})[COACH[t]] || {}; return o.nom ? [o.nom, o.lic && 'lic. ' + o.lic, o.njo && 'JO ' + o.njo, o.niv].filter(Boolean).join(' · ') : '—'; };
+/* Modèle commun aux deux exports */
+function sheetModel(s) {
+  const sp = SPORTS[s.sport], r = result(s), m = s.meta, T = [];
+  const extra = [s.forfait ? 'Forfait : ' + teamLabel(s, s.forfait) : '', s.tab && s.tab.A !== '' && s.tab.A != null ? `Départage : ${s.tab.A} – ${s.tab.B}` : ''].filter(Boolean).join(' · ');
+  if (sp.kind === 'co') {
+    const ps = coPeriodScores(s);
+    T.push({ title: 'Score par période', sheet: 'Feuille de match', cols: [{ h: 'Équipe', w: 3 }, ...ps.map(p => ({ h: periodName(s, p.p), w: 1.4, al: 'c' })), { h: 'Total', w: 1.2, al: 'c' }],
+      rows: ['A', 'B'].map(t => [teamLabel(s, t), ...ps.map(p => p[t]), r[t]]) });
+    const cols = sp.acts.filter(a => !a[2]), ptsH = sp.acts.some(a => a[2] > 1) ? 'Pts' : 'Buts';
+    for (const t of ['A', 'B']) T.push({ title: `Équipe ${t} — ${teamLabel(s, t)}`, sheet: `Équipe ${t}`,
+      sub: `AS : ${s.teams[t].as || '—'} · Responsable : ${s.teams[t].prof || '—'} · Jeune coach : ${coachPlain(s, t)} · Temps morts : ${tmUsed(s, t)}`,
+      cols: [{ h: 'N°', w: .7, al: 'c' }, { h: 'Nom Prénom', w: 4.2 }, { h: 'Licence', w: 2.2, al: 'c' }, { h: ptsH, w: .9, al: 'c' }, ...cols.map(c => ({ h: c[1], w: 1.15, al: 'c' }))],
+      rows: playerStats(s, t).map(x => [String(x.j.n ?? '') + (x.j.cap ? ' (C)' : '') + (x.j.gb ? ' GB' : ''), `${x.j.nom || ''} ${x.j.prenom || ''}`.trim() + (x.j.obs ? ` (${x.j.obs})` : ''), x.j.lic || '', x.pts || '', ...cols.map(c => x.c[c[0]] || '')]) });
+    const run = coRunning(s);
+    T.push({ title: 'Déroulé du match', sheet: 'Déroulé', cols: [{ h: 'Période', w: 1.6 }, { h: 'Temps', w: .9, al: 'c' }, { h: 'Équipe', w: 2.6 }, { h: 'N°', w: .6, al: 'c' }, { h: 'Joueur', w: 2.4 }, { h: 'Action', w: 1.6 }, { h: 'Score', w: .9, al: 'c' }],
+      rows: s.events.map((e, i) => { const j = s.teams[e.team].players.find(x => e.n !== '' && x.n == e.n); return [periodName(s, e.p), e.t, teamLabel(s, e.team), e.n ?? '', j ? `${j.nom} ${j.prenom}` : '', actOf(s, e.k)[1], `${run[i].A}-${run[i].B}`]; }) });
+  } else {
+    T.push({ title: 'Parties', sheet: 'Feuille de match', sub: `Sets de ${s.cfg.pts} points${s.cfg.max ? ` (plafond ${s.cfg.max})` : ''}, ${s.cfg.sets} sets gagnants · Jeune coach ${teamLabel(s, 'A')} : ${coachPlain(s, 'A')} · Jeune coach ${teamLabel(s, 'B')} : ${coachPlain(s, 'B')}`,
+      cols: [{ h: 'Partie', w: 1.8 }, { h: teamLabel(s, 'A'), w: 2.6 }, { h: teamLabel(s, 'B'), w: 2.6 }, { h: 'Sets', w: 2.8, al: 'c' }, { h: 'Vainqueur', w: 2 }],
+      rows: s.parties.map(p => { const st = duelState(p, s.cfg, sp.serve); return [p.lab, p.a, p.b, st.sets.map(x => x[0] + '-' + x[1]).join('  ') + (st.forfeit ? ' forfait' : ''), st.winner ? (st.winner === 'A' ? p.a || teamLabel(s, 'A') : p.b || teamLabel(s, 'B')) : '—']; }) });
+  }
+  T.push({ title: 'Jeunes officiels', sheet: 'Feuille de match', cols: [{ h: 'Fonction', w: 2.2 }, { h: 'Nom Prénom', w: 2.6 }, { h: 'Établissement', w: 2.8 }, { h: 'Licence UNSS', w: 1.6, al: 'c' }, { h: 'N° JO', w: 1.2, al: 'c' }, { h: 'Niveau JO', w: 1.4, al: 'c' }],
+    rows: ROLES[sp.kind].map(([k, l]) => { const o = s.officiels[k] || {}; return o.nom ? [l, o.nom, o.etab || '', o.lic || '', o.njo || '', o.niv || ''] : null; }).filter(Boolean) });
+  return { s, title: `Feuille de ${sp.kind === 'co' ? 'match' : 'rencontre'} — ${sp.nom}`, status: STATUTS[s.status] || '',
+    meta: [['Compétition', m.comp], ['Niveau', m.niveau], ['Date', `${fmtDate(m.date)} ${m.heure || ''}`.trim()], ['Lieu', m.lieu], ['Catégorie', `${m.cat || ''} ${m.sexe || ''}`.trim()], ['Poule / n° match', [m.poule, m.num].filter(Boolean).join(' · ')]],
+    A: teamLabel(s, 'A'), B: teamLabel(s, 'B'), asA: s.teams.A.as || '', asB: s.teams.B.as || '', sA: r.A, sB: r.B, winner: r.w ? teamLabel(s, r.w) : 'Match nul', extra, tables: T,
+    obs: s.obs || 'Néant', prof: s.profNote || '', sigs: SIGS.map(([k, l]) => ({ label: l(s), img: s.sig && s.sig[k] && /^data:image\/png;base64,/.test(s.sig[k]) ? s.sig[k] : '' })),
+    footer: `Feuille n° ${s.id} · TablMarkUNSS ${TMU_VERSION} · ${s.closedAt ? 'clôturée le ' + new Date(s.closedAt).toLocaleString('fr-FR') : 'non clôturée'}` };
+}
+
+/* ---------- ZIP (stockage simple) + CRC32 ---------- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = CRC_T[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+const catU8 = a => { const o = new Uint8Array(a.reduce((n, x) => n + x.length, 0)); let p = 0; for (const x of a) { o.set(x, p); p += x.length; } return o; };
+function zipStore(files) {
+  const te = new TextEncoder(), parts = [], cen = []; let off = 0;
+  for (const f of files) {
+    const nm = te.encode(f.name), d = typeof f.data === 'string' ? te.encode(f.data) : f.data, crc = crc32(d);
+    const h = new DataView(new ArrayBuffer(30)); h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true); h.setUint16(26, nm.length, true);
+    parts.push(new Uint8Array(h.buffer), nm, d);
+    const c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true); c.setUint32(20, d.length, true); c.setUint32(24, d.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+    cen.push(new Uint8Array(c.buffer), nm); off += 30 + nm.length + d.length;
+  }
+  const cs = cen.reduce((n, x) => n + x.length, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, cs, true); e.setUint32(16, off, true);
+  return catU8([...parts, ...cen, new Uint8Array(e.buffer)]);
+}
+
+/* ---------- Excel (.xlsx) ---------- */
+function makeXlsx(M) {
+  const xe = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+  const colL = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const books = {}; const order = [];
+  const sh = name => { if (!books[name]) { books[name] = { rows: [], widths: [] }; order.push(name); } return books[name]; };
+  const add = (b, cells) => b.rows.push(cells); // cells : [v] ou [{v, s}]
+  const table = (b, t) => {
+    add(b, [{ v: t.title, s: 6 }]); if (t.sub) add(b, [{ v: t.sub, s: 7 }]);
+    add(b, t.cols.map(c => ({ v: c.h, s: 2 })));
+    for (const r of t.rows) add(b, r.map(v => ({ v, s: 4 })));
+    if (!t.rows.length) add(b, [{ v: 'Aucune donnée', s: 7 }]);
+    t.cols.forEach((c, i) => { b.widths[i] = Math.max(b.widths[i] || 8, Math.round(c.w * 7.5)); }); add(b, []);
+  };
+  const F = sh('Feuille de match');
+  add(F, [{ v: 'TablMarkUNSS — ' + M.title, s: 3 }]); add(F, [{ v: M.status, s: 7 }]); add(F, []);
+  for (const [k, v] of M.meta) add(F, [{ v: k, s: 5 }, { v, s: 4 }]);
+  add(F, []); add(F, [{ v: 'Équipe', s: 2 }, { v: 'Établissement / équipe', s: 2 }, { v: 'AS', s: 2 }, { v: 'Score', s: 2 }]);
+  add(F, [{ v: 'A', s: 5 }, { v: M.A, s: 4 }, { v: M.asA, s: 4 }, { v: M.sA, s: 8 }]); add(F, [{ v: 'B', s: 5 }, { v: M.B, s: 4 }, { v: M.asB, s: 4 }, { v: M.sB, s: 8 }]);
+  add(F, [{ v: 'Vainqueur', s: 5 }, { v: M.winner, s: 1 }]); if (M.extra) add(F, [{ v: '', s: 0 }, { v: M.extra, s: 7 }]); add(F, []);
+  F.widths = [24, 36, 28, 14, 12, 12];
+  for (const t of M.tables) table(sh(t.sheet), t);
+  add(F, [{ v: 'Observations, réserves, incidents', s: 6 }]); add(F, [{ v: 'Observations', s: 5 }, { v: M.obs, s: 9 }]);
+  if (M.prof) { add(F, [{ v: 'Note de l’enseignant', s: 6 }]); add(F, [{ v: 'Note', s: 5 }, { v: M.prof, s: 9 }]); }
+  add(F, []); add(F, [{ v: 'Signatures', s: 6 }]); for (const g of M.sigs) add(F, [{ v: g.label, s: 5 }, { v: g.img ? 'Signé sur la tablette' : 'Non signé', s: 4 }]);
+  add(F, []); add(F, [{ v: M.footer, s: 7 }]);
+  const used = new Set(), names = order.map(n => { let b = n.replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 31), x = b, i = 2; while (used.has(x)) x = b.slice(0, 28) + ' ' + i++; used.add(x); return x; });
+  const sheetXml = b => {
+    const w = b.widths.map((v, i) => `<col min="${i + 1}" max="${i + 1}" width="${v || 10}" customWidth="1"/>`).join('');
+    const rows = b.rows.map((r, ri) => `<row r="${ri + 1}">${r.map((c, ci) => { const o = c && typeof c === 'object' ? c : { v: c }; const ref = colL(ci) + (ri + 1), st = o.s ? ` s="${o.s}"` : '';
+      return typeof o.v === 'number' && isFinite(o.v) ? `<c r="${ref}"${st}><v>${o.v}</v></c>` : (o.v === '' || o.v == null) && !o.s ? '' : `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${xe(o.v)}</t></is></c>`; }).join('')}</row>`).join('');
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${w ? `<cols>${w}</cols>` : ''}<sheetData>${rows}</sheetData><pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/></worksheet>`;
+  };
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="6"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="16"/><color rgb="FF0A1428"/><name val="Calibri"/></font><font><b/><sz val="12"/><color rgb="FFE05A00"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF555555"/><name val="Calibri"/></font></fonts>
+<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F5FD0"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFBBBBBB"/></left><right style="thin"><color rgb="FFBBBBBB"/></right><top style="thin"><color rgb="FFBBBBBB"/></top><bottom style="thin"><color rgb="FFBBBBBB"/></bottom><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="10"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="5" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  const files = [
+    { name: '[Content_Types].xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${order.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>` },
+    { name: '_rels/.rels', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
+    { name: 'xl/workbook.xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${names.map((n, i) => `<sheet name="${xe(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>` },
+    { name: 'xl/_rels/workbook.xml.rels', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${order.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${order.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
+    { name: 'xl/styles.xml', data: styles },
+    ...order.map((n, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: sheetXml(books[n]) }))
+  ];
+  return zipStore(files);
+}
+
+/* ---------- PDF ---------- */
+const HELV = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+const CP1252 = { 0x2019: 0x92, 0x2018: 0x91, 0x201C: 0x93, 0x201D: 0x94, 0x2013: 0x96, 0x2014: 0x97, 0x2026: 0x85, 0x20AC: 0x80, 0x0153: 0x9C, 0x0152: 0x8C, 0x2022: 0x95, 0x2212: 0x2D, 0x202F: 0x20, 0x00A0: 0x20, 0x2192: 0x3E, 0x21C4: 0x3E };
+const toCp = s => { let o = ''; for (const ch of String(s ?? '').normalize('NFC')) { const c = ch.codePointAt(0); o += c < 256 ? ch : CP1252[c] ? String.fromCharCode(CP1252[c]) : '?'; } return o; };
+const pw = (s, size, bold) => { let w = 0; for (const ch of toCp(s)) { const b = ch.normalize('NFD').charCodeAt(0); w += b >= 32 && b <= 126 ? HELV[b - 32] : b === 0x92 || b === 0x91 ? 222 : 556; } return w * size / 1000 * (bold ? 1.07 : 1); };
+async function sigJpeg(url) {
+  try {
+    const im = new Image(); await new Promise((ok, ko) => { im.onload = ok; im.onerror = ko; im.src = url; });
+    const c = document.createElement('canvas'); c.width = 300; c.height = 110; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 300, 110); x.drawImage(im, 0, 0, 300, 110);
+    const b = atob(c.toDataURL('image/jpeg', .88).split(',')[1]); const u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return { w: 300, h: 110, bytes: u };
+  } catch (e) { return null; }
+}
+async function makePdf(M) {
+  const W = 595.28, H = 841.89, mg = 36, cw = W - 2 * mg, pages = []; let ops, y;
+  const pe = s => toCp(s).replace(/[\\()]/g, m => '\\' + m);
+  const fit = (s, size, bold, max) => { s = String(s ?? ''); if (pw(s, size, bold) <= max) return s; while (s.length > 1 && pw(s + '…', size, bold) > max) s = s.slice(0, -1); return s + '…'; };
+  const wrap = (s, size, max) => { const out = []; for (const para of String(s ?? '').split('\n')) { let line = ''; for (const w of para.split(/\s+/)) { const t = line ? line + ' ' + w : w; if (pw(t, size) > max && line) { out.push(line); line = w; } else line = t; } out.push(line); } return out; };
+  const page = () => { ops = []; pages.push(ops); y = H - mg; };
+  const txt = (x, yy, s, size = 9, bold = false, color = '0.1 0.1 0.12', al = 'l', max) => { s = max ? fit(s, size, bold, max) : String(s ?? ''); const w = pw(s, size, bold); const xx = al === 'r' ? x - w : al === 'c' ? x - w / 2 : x;
+    ops.push(`BT ${color} rg /${bold ? 'F2' : 'F1'} ${size} Tf ${xx.toFixed(2)} ${yy.toFixed(2)} Td (${pe(s)}) Tj ET`); };
+  const rect = (x, yy, w, h, fill, stroke, lw = .6) => { if (fill) ops.push(`${fill} rg ${x.toFixed(2)} ${yy.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`); if (stroke) ops.push(`${stroke} RG ${lw} w ${x.toFixed(2)} ${yy.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re S`); };
+  const line = (x1, y1, x2, y2, c = '0.75 0.75 0.75', lw = .5) => ops.push(`${c} RG ${lw} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
+  const need = h => { if (y - h < mg + 18) page(); };
+  const ORANGE = '0.88 0.35 0', BLUE = '0.12 0.37 0.82', GREY = '0.42 0.44 0.48';
+  const section = (t, sub) => { need(40); y -= 8; txt(mg, y - 11, t, 11.5, true, '0.04 0.08 0.16'); y -= 15; line(mg, y, mg + cw, y, ORANGE, 1.2); y -= 4;
+    if (sub) for (const l of wrap(sub, 8, cw)) { y -= 10; txt(mg, y, l, 8, false, GREY); } y -= 4; };
+  const table = t => {
+    section(t.title, t.sub); const tot = t.cols.reduce((n, c) => n + c.w, 0), ws = t.cols.map(c => c.w / tot * cw), rh = 14, fs = t.cols.length > 8 ? 7.5 : 8.5;
+    const head = () => { rect(mg, y - rh, cw, rh, BLUE); let x = mg; t.cols.forEach((c, i) => { const cx = c.al === 'c' ? x + ws[i] / 2 : x + 3; txt(cx, y - rh + 4.2, c.h, fs - .5, true, '1 1 1', c.al === 'c' ? 'c' : 'l', ws[i] - 5); x += ws[i]; }); y -= rh; };
+    head(); if (!t.rows.length) { y -= rh; txt(mg + 3, y + 4, 'Aucune donnée', fs, false, GREY); }
+    t.rows.forEach((r, ri) => { if (y - rh < mg + 18) { page(); head(); } if (ri % 2) rect(mg, y - rh, cw, rh, '0.955 0.96 0.97'); let x = mg;
+      r.forEach((v, i) => { const c = t.cols[i] || {}; txt(c.al === 'c' ? x + ws[i] / 2 : x + 3, y - rh + 4.2, v, fs, false, '0.1 0.1 0.12', c.al === 'c' ? 'c' : 'l', ws[i] - 5); x += ws[i]; });
+      line(mg, y - rh, mg + cw, y - rh, '0.85 0.86 0.88', .4); y -= rh; });
+    rect(mg, y, cw, 0.01); y -= 4;
+  };
+  page();
+  // En-tête
+  rect(0, H - 8, W, 8, ORANGE); rect(W * .62, H - 8, W * .38, 8, BLUE);
+  txt(mg, y - 10, 'TablMark', 10, true, '0.04 0.08 0.16'); txt(mg + pw('TablMark', 10, true), y - 10, 'UNSS', 10, true, ORANGE); txt(mg + pw('TablMarkUNSS ', 10, true), y - 10, '· feuille saisie par la table de marque', 8, false, GREY);
+  txt(mg, y - 32, M.title, 19, true, '0.04 0.08 0.16', 'l', cw - 120);
+  const stW = pw(M.status, 9, true) + 16; rect(mg + cw - stW, y - 34, stW, 18, null, '0.04 0.08 0.16', 1); txt(mg + cw - stW / 2, y - 28, M.status, 9, true, '0.04 0.08 0.16', 'c');
+  y -= 46;
+  // Infos
+  const bw = cw / 3, bh = 30;
+  M.meta.forEach(([k, v], i) => { const cx = mg + (i % 3) * bw, cy = y - Math.floor(i / 3) * bh; rect(cx, cy - bh, bw, bh, '0.97 0.975 0.98', '0.85 0.86 0.88', .5); txt(cx + 6, cy - 11, k.toUpperCase(), 6.8, true, GREY); txt(cx + 6, cy - 23, v || '—', 9.5, false, '0.1 0.1 0.12', 'l', bw - 12); });
+  y -= Math.ceil(M.meta.length / 3) * bh + 10;
+  // Score
+  const sh = 62; rect(mg, y - sh, cw * .38, sh, '1 0.95 0.9'); rect(mg + cw * .62, y - sh, cw * .38, sh, '0.92 0.95 1'); rect(mg, y - sh, cw, sh, null, '0.04 0.08 0.16', 1.2);
+  rect(mg, y - sh, 5, sh, ORANGE); rect(mg + cw - 5, y - sh, 5, sh, BLUE);
+  txt(mg + 14, y - 22, 'ÉQUIPE A', 7, true, ORANGE); txt(mg + 14, y - 37, M.A, 12, true, '0.04 0.08 0.16', 'l', cw * .38 - 22); txt(mg + 14, y - 51, M.asA, 8, false, GREY);
+  txt(mg + cw - 14, y - 22, 'ÉQUIPE B', 7, true, BLUE, 'r'); txt(mg + cw - 14, y - 37, M.B, 12, true, '0.04 0.08 0.16', 'r', cw * .38 - 22); txt(mg + cw - 14, y - 51, M.asB, 8, false, GREY, 'r');
+  txt(mg + cw / 2, y - 42, `${M.sA}  –  ${M.sB}`, 30, true, '0.04 0.08 0.16', 'c');
+  y -= sh + 14; txt(mg, y, 'Vainqueur : ', 10, false); txt(mg + pw('Vainqueur : ', 10), y, M.winner, 10, true); if (M.extra) txt(mg + cw, y, M.extra, 9, false, GREY, 'r', cw / 2);
+  y -= 4;
+  for (const t of M.tables) table(t);
+  section('Observations, réserves, incidents'); const ol = wrap(M.obs, 9, cw - 12); need(ol.length * 12 + 12); rect(mg, y - ol.length * 12 - 8, cw, ol.length * 12 + 8, null, '0.8 0.8 0.82'); ol.forEach((l, i) => txt(mg + 6, y - 13 - i * 12, l, 9)); y -= ol.length * 12 + 12;
+  if (M.prof) { section('Note de l’enseignant'); for (const l of wrap(M.prof, 9, cw)) { need(14); y -= 12; txt(mg, y, l, 9); } y -= 4; }
+  section('Signatures'); need(86);
+  const imgs = []; const sgW = (cw - 18) / 4, sgH = 74;
+  for (let i = 0; i < M.sigs.length; i++) { const g = M.sigs[i], x = mg + i * (sgW + 6); rect(x, y - sgH, sgW, sgH, null, '0.75 0.76 0.78'); txt(x + 5, y - 10, g.label, 7, true, GREY, 'l', sgW - 10);
+    if (g.img) { const j = await sigJpeg(g.img); if (j) { imgs.push(j); const iw = sgW - 10, ih = iw * j.h / j.w > sgH - 18 ? sgH - 18 : iw * j.h / j.w; ops.push(`q ${iw.toFixed(2)} 0 0 ${ih.toFixed(2)} ${(x + 5).toFixed(2)} ${(y - sgH + 4).toFixed(2)} cm /Im${imgs.length} Do Q`); } }
+    else txt(x + sgW / 2, y - sgH / 2 - 4, 'Non signé', 8, false, '0.6 0.6 0.62', 'c'); }
+  y -= sgH + 6;
+  pages.forEach((p, i) => { ops = p; line(mg, mg - 2, mg + cw, mg - 2, '0.8 0.8 0.82', .4); txt(mg, mg - 12, M.footer, 6.8, false, GREY, 'l', cw - 60); txt(mg + cw, mg - 12, `Page ${i + 1}/${pages.length}`, 6.8, false, GREY, 'r'); });
+  // Assemblage
+  const B = s => { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255; return u; };
+  const objs = [], nImg = imgs.length, firstPage = 5 + nImg;
+  objs[1] = B('<< /Type /Catalog /Pages 2 0 R >>');
+  objs[2] = B(`<< /Type /Pages /Kids [${pages.map((_, i) => `${firstPage + i * 2} 0 R`).join(' ')}] /Count ${pages.length} >>`);
+  objs[3] = B('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  objs[4] = B('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  imgs.forEach((j, i) => { objs[5 + i] = catU8([B(`<< /Type /XObject /Subtype /Image /Width ${j.w} /Height ${j.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${j.bytes.length} >>\nstream\n`), j.bytes, B('\nendstream')]); });
+  const xo = nImg ? `/XObject << ${imgs.map((_, i) => `/Im${i + 1} ${5 + i} 0 R`).join(' ')} >>` : '';
+  pages.forEach((p, i) => { const pid = firstPage + i * 2, cid = pid + 1, content = B(p.join('\n'));
+    objs[pid] = B(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> ${xo} >> /Contents ${cid} 0 R >>`);
+    objs[cid] = catU8([B(`<< /Length ${content.length} >>\nstream\n`), content, B('\nendstream')]); });
+  const chunks = [B('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n')], offs = []; let pos = chunks[0].length;
+  for (let i = 1; i < objs.length; i++) { offs[i] = pos; const c = catU8([B(`${i} 0 obj\n`), objs[i], B('\nendobj\n')]); chunks.push(c); pos += c.length; }
+  const xref = `xref\n0 ${objs.length}\n0000000000 65535 f \n${offs.slice(1).map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('')}trailer\n<< /Size ${objs.length} /Root 1 0 R /Info << /Title (${pe(M.title)}) /Producer (TablMarkUNSS) >> >>\nstartxref\n${pos}\n%%EOF`;
+  chunks.push(B(xref)); return catU8(chunks);
+}
+async function exportSheet(s, kind) {
+  const M = sheetModel(s);
+  if (kind === 'pdf') return saveFile(fileName(s, 'pdf'), new Blob([await makePdf(M)], { type: 'application/pdf' }));
+  return saveFile(fileName(s, 'xlsx'), new Blob([makeXlsx(M)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+}
 
 /* ===== Import des exports OPUSS (.xlsx) — lecteur autonome, sans bibliothèque ===== */
 async function readXlsx(buf) {
@@ -635,7 +823,7 @@ function vList() {
 function vDetail() {
   const s = DB.sheets[curId]; if (!s) { view = 'list'; return vList(); }
   return `<div class="row" style="justify-content:space-between;margin-bottom:10px"><button data-act="go" data-v="list">← Retour</button><div class="row">
-  ${s.status === 'valide' ? `<button data-act="unval">Retirer la validation</button>` : `<button class="btn-p" data-act="val">Valider la feuille</button>`}<button data-act="print">Imprimer</button><button data-act="dlhtml">Télécharger (.html)</button><button class="btn-d" data-act="del">Supprimer</button></div></div>
+  ${s.status === 'valide' ? `<button data-act="unval">Retirer la validation</button>` : `<button class="btn-p" data-act="val">Valider la feuille</button>`}<button class="btn-p" data-act="pdf">PDF</button><button class="btn-b" data-act="xlsx">Excel</button><button data-act="print">Imprimer</button><button class="btn-d" data-act="del">Supprimer</button></div></div>
   <div class="card"><label class="f"><span>Note de l’enseignant (correction, décision, réserve traitée)</span><textarea id="note" style="min-height:60px">${esc(s.profNote || '')}</textarea></label><div class="row" style="justify-content:flex-end;margin-top:6px"><button data-act="note">Enregistrer la note</button></div></div>
   <div style="border-radius:12px;overflow:hidden">${sheetHTML(s)}</div>`;
 }
@@ -723,6 +911,7 @@ document.addEventListener('click', async e => {
     case 'note': s.profNote = $('#note').value; save(); toast('Note enregistrée.'); break;
     case 'del': ask('Supprimer cette feuille ?', 'Supprimer', () => { delete DB.sheets[curId]; save(); view = 'list'; render(); }); break;
     case 'print': $('#print').innerHTML = sheetHTML(s); try { window.print(); } catch (x) { toast('Impression indisponible ici : utilise Télécharger (.html).', true); } break;
+    case 'pdf': case 'xlsx': { el.disabled = true; try { const r = await exportSheet(s, a); if (r !== 'ok') toast('Téléchargement impossible ici.', true); } catch (x) { toast('Export impossible : ' + x.message, true); } el.disabled = false; } break;
     case 'dlhtml': { const r = await saveFile(fileName(s, 'html'), standaloneSheet(s)); if (r !== 'ok') toast('Téléchargement impossible ici.', true); } break;
     case 'csv': { const r = await saveFile(`TablMark_resultats_${new Date().toISOString().slice(0, 10)}.csv`, resultsCSV(filtered())); if (r !== 'ok') toast('Téléchargement impossible ici.', true); } break;
     case 'backup': { const r = await saveFile(`TablMark_sauvegarde_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ app: 'TablMarkUNSS-prof', at: Date.now(), sheets: Object.values(DB.sheets) })); if (r !== 'ok') toast('Téléchargement impossible ici.', true); } break;
