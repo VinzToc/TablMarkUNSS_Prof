@@ -309,8 +309,7 @@ const SHEET_CSS = `.sheet{background:#fff;color:#111;font:13px/1.4 Barlow,Arial,
 @media(max-width:600px){.sh-sig{grid-template-columns:1fr 1fr}.sh-big{font-size:30px}.sh-t{font-size:12px}}
 @media print{body *{visibility:hidden}#print,#print *{visibility:visible}#print{position:absolute;inset:0}.sheet{padding:0}}`;
 function standaloneSheet(s) {
-  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Feuille ${esc(SPORTS[s.sport].nom)}</title><style>body{margin:0;background:#fff}${SHEET_CSS}</style></head><body><div id="print">${sheetHTML(s)}</div><script>setTimeout(()=>{try{print()}catch(e){}},400)<\/script><script>if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))</script>
-</body></html>`;
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Feuille ${esc(SPORTS[s.sport].nom)}</title><style>body{margin:0;background:#fff}${SHEET_CSS}</style></head><body><div id="print">${sheetHTML(s)}</div><script>setTimeout(()=>{try{print()}catch(e){}},400)<\/script></body></html>`;
 }
 function validSheet(o) {
   return o && typeof o === 'object' && typeof o.id === 'string' && SPORTS[o.sport] && o.teams && o.teams.A && o.teams.B && o.meta && (Array.isArray(o.events) || Array.isArray(o.parties));
@@ -475,5 +474,6 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') ov(''); });
 render();
 }
 </script>
+<script>if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))</script>
 </body>
 </html>
