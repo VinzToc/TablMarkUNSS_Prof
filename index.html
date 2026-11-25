@@ -363,6 +363,7 @@ function validSheet(o) {
 }
 function store(key, val) { try { if (val === undefined) return JSON.parse(localStorage.getItem(key) || 'null'); localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return val === undefined ? null : false; } }
 
+
 /* ===== Exports PDF et Excel de la feuille de match (sans bibliothèque, hors ligne) ===== */
 const coachPlain = (s, t) => { const o = (s.officiels || {})[COACH[t]] || {}; return o.nom ? [o.nom, o.lic && 'lic. ' + o.lic, o.njo && 'JO ' + o.njo, o.niv].filter(Boolean).join(' · ') : '—'; };
 /* Modèle commun aux deux exports */
@@ -790,6 +791,7 @@ function makePrep() {
   s.prepBy = 'prof'; s.preparedAt = Date.now();
   DB.prep.unshift(s); save(); render(); scrollTo(0, document.body.scrollHeight); toast('Feuille créée : transmets-la à la table de marque.');
 }
+
 function nav() {
   const it = [['prep', 'Préparer un match'], ['list', 'Feuilles reçues'], ['std', 'Classements'], ['jo', 'Jeunes officiels']];
   $('#nav').innerHTML = it.map(([k, l]) => `<button data-act="go" data-v="${k}" class="${view === k || (view === 'detail' && k === 'list') ? 'on' : ''}">${l}</button>`).join('');
