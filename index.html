@@ -117,6 +117,9 @@ table.list tr.click{cursor:pointer}table.list tr.click:hover td{background:rgba(
 .sc{font:700 20px var(--cond);white-space:nowrap}
 .std th:nth-child(n+2),.std td:nth-child(n+2){text-align:right}
 .std td.pts{font:700 20px var(--cond)}
+.ins{list-style:none;margin:0;padding:0;max-height:220px;overflow:auto;display:grid;gap:4px}.ins li{padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.2)}
+.plist{display:flex;flex-wrap:wrap;gap:5px;margin:4px 0 12px}.plist span{background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:13px}.plist i{font-style:normal;color:var(--mute);margin-left:6px;font-size:11px}
+#dropx.over{border-color:var(--c1)}
 .pts-cfg{display:grid;grid-template-columns:repeat(4,minmax(0,110px));gap:8px}
 @media(max-width:700px){.drop{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.filters{grid-template-columns:1fr 1fr}.filters input{grid-column:1/-1}}
 </style>
@@ -170,6 +173,22 @@ const SPORTS = {
 };
 const actOf = (s, k) => (SPORTS[s.sport].acts || []).find(a => a[0] === k) || [k, k === 'tm' ? 'Temps mort' : k, 0];
 const periodName = (s, p) => p <= s.cfg.periods ? `${SPORTS[s.sport].pn} ${p}` : `Prolong. ${p - s.cfg.periods}`;
+
+/* ---------- Création d'une feuille vierge (élève et prof) ---------- */
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+function cfgFor(sport) {
+  const sp = SPORTS[sport];
+  return sp.kind === 'co' ? { periods: sp.periods, dur: sp.dur, ot: sp.ot, tm: sp.tm } : { pts: sp.pts, max: sp.max, sets: sp.sets, format: 'Match simple' };
+}
+function mkParties(sport, fmt) { return (SPORTS[sport].formats[fmt] || ['Simple']).map(l => ({ lab: l, a: '', b: '', h: [], first: 'A', forfeit: '' })); }
+function blankSheet(sport) {
+  const sp = SPORTS[sport], cfg = cfgFor(sport);
+  return { id: uid(), v: 1, sport, status: 'prep', created: Date.now(), updated: Date.now(),
+    meta: { comp: '', niveau: 'District', date: today(), heure: '', lieu: '', cat: 'Minimes', sexe: 'Mixte', num: '', poule: '' },
+    teams: { A: { nom: '', as: '', prof: '', players: [] }, B: { nom: '', as: '', prof: '', players: [] } },
+    officiels: {}, cfg, events: [], period: 1, clock: { rem: (cfg.dur || 0) * 60, run: false, at: 0 },
+    parties: sp.kind === 'du' ? mkParties(sport, cfg.format) : [], obs: '', sig: {}, tab: { A: '', B: '' }, forfait: '' };
+}
 
 /* ---------- Collectif : calculs ---------- */
 function coScore(s, upto) {
@@ -339,10 +358,100 @@ function validSheet(o) {
 }
 function store(key, val) { try { if (val === undefined) return JSON.parse(localStorage.getItem(key) || 'null'); localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return val === undefined ? null : false; } }
 
+/* ===== Import des exports OPUSS (.xlsx) — lecteur autonome, sans bibliothèque ===== */
+async function readXlsx(buf) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf), td = new TextDecoder();
+  let e = u8.length - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('Ce fichier n’est pas un classeur Excel (.xlsx).');
+  const n = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true); const files = {};
+  for (let i = 0; i < n; i++) {
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    files[td.decode(u8.subarray(p + 46, p + 46 + nl))] = { method, csize, off }; p += 46 + nl + xl + cl;
+  }
+  const get = async name => {
+    const f = files[name]; if (!f) return null;
+    const start = f.off + 30 + dv.getUint16(f.off + 26, true) + dv.getUint16(f.off + 28, true), data = u8.slice(start, start + f.csize);
+    if (f.method === 0) return td.decode(data);
+    if (typeof DecompressionStream === 'undefined') throw new Error('Navigateur trop ancien pour lire ce fichier : mettez-le à jour.');
+    return td.decode(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  };
+  const X = s => new DOMParser().parseFromString(s, 'application/xml');
+  const ss = []; const sst = await get('xl/sharedStrings.xml');
+  if (sst) for (const si of X(sst).getElementsByTagName('si')) ss.push([...si.getElementsByTagName('t')].map(t => t.textContent).join(''));
+  const rel = {}; for (const r of X(await get('xl/_rels/workbook.xml.rels')).getElementsByTagName('Relationship')) rel[r.getAttribute('Id')] = r.getAttribute('Target');
+  const col = ref => { let c = 0; for (const ch of ref.replace(/\d+/g, '')) c = c * 26 + ch.charCodeAt(0) - 64; return c - 1; };
+  const sheets = {};
+  for (const sh of X(await get('xl/workbook.xml')).getElementsByTagName('sheet')) {
+    let t = rel[sh.getAttribute('r:id')] || ''; t = t.startsWith('/') ? t.slice(1) : 'xl/' + t.replace(/^\.\//, '');
+    const xml = await get(t); if (!xml) continue; const rows = [];
+    for (const r of X(xml).getElementsByTagName('row')) {
+      const row = [];
+      for (const c of r.getElementsByTagName('c')) {
+        const tp = c.getAttribute('t'), v = c.getElementsByTagName('v')[0]; let val;
+        if (tp === 's') val = ss[+v.textContent]; else if (tp === 'inlineStr') val = [...c.getElementsByTagName('t')].map(x => x.textContent).join('');
+        else { val = v ? v.textContent : ''; if (/^\d+(\.\d+)?E\+?\d+$/i.test(val)) val = Number(val).toFixed(0); }
+        row[col(c.getAttribute('r'))] = String(val ?? '').trim();
+      }
+      rows.push(row);
+    }
+    sheets[sh.getAttribute('name')] = rows;
+  }
+  return sheets;
+}
+const normKey = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+const pick = (o, keys) => { for (const k of keys) if (o[k]) return o[k]; return ''; };
+function rowsToObjs(rows) {
+  const hi = rows.findIndex(r => r && r.filter(Boolean).length >= 3); if (hi < 0) return [];
+  const H = rows[hi].map(normKey);
+  return rows.slice(hi + 1).filter(r => r && r.some(Boolean)).map(r => { const o = {}; H.forEach((h, i) => { if (h) o[h] = r[i] || ''; }); return o; });
+}
+const SPORT_OPUSS = [[/3\s*X\s*3/i, 'b3x3'], [/HAND.*4|HAND\s*A\s*4/i, 'hand4'], [/HAND/i, 'handball'], [/FUTSAL/i, 'futsal'], [/FOOT/i, 'football'], [/BASK/i, 'basket'], [/BADM/i, 'badminton'], [/TENNIS.*TABLE|PING/i, 'tt']];
+const sportFrom = t => { for (const [re, k] of SPORT_OPUSS) if (re.test(t || '')) return k; return ''; };
+const nivJO = t => { const k = normKey(t); return NIV_JO.find(n => n && normKey(n) === k) || (k.startsWith('ETAB') ? 'Établissement' : k.startsWith('DEP') ? 'Départemental' : k.startsWith('ACA') ? 'Académique' : k.startsWith('DIST') ? 'District' : k.startsWith('NAT') ? 'National' : ''); };
+const cap = s => String(s || '').toLowerCase().replace(/(^|[\s'-])\S/g, m => m.toUpperCase());
+function metaFromName(name) {
+  const base = String(name || '').replace(/\.xlsx$/i, ''); const parts = base.split(/_-_|\s+-\s+/).map(x => x.trim());
+  const slug = parts.find(x => /[a-z]/i.test(x) && x.includes('-') && !/tous.les.inscrits/i.test(x) && !/^\d{4}-\d\d-\d\d/.test(x)) || '';
+  const first = (slug.split('-')[0] || '').toLowerCase();
+  const niveau = { dist: 'District', district: 'District', dep: 'Départemental', dept: 'Départemental', aca: 'Académique', acad: 'Académique', ia: 'Inter-académique', inter: 'Inter-académique', cf: 'Championnat de France', france: 'Championnat de France' }[first] || '';
+  return { comp: slug ? cap(slug.replace(/-/g, ' ')) : '', compId: parts.find(x => /^\d{4,}$/.test(x)) || '', niveau, sport: sportFrom(parts.at(-1)) || sportFrom(slug) };
+}
+/* Analyse un export OPUSS → { teams, jo, meta } */
+function parseOpuss(sheets, fileName) {
+  const teams = {}, jo = [], accomp = {}, meta = metaFromName(fileName);
+  const T = (as, num, etab) => { const key = (as || etab || '?') + '|' + (num || ''); return teams[key] || (teams[key] = { key, as: as || '', num: num || '', etab: etab || '', players: [], prof: '', insc: '', sport: '' }); };
+  for (const [name, rows] of Object.entries(sheets)) {
+    const L = rowsToObjs(rows); if (!L.length) continue; const K = Object.keys(L[0]);
+    if (K.includes('NOM_ACCOMPAGNATEUR')) {
+      for (const o of L) { const as = o.AS || o.AS_ATTACHE; const nm = [o.CIVILITE_ACCOMPAGNATEUR === 'M' ? 'M.' : o.CIVILITE_ACCOMPAGNATEUR === 'MME' || o.CIVILITE_ACCOMPAGNATEUR === 'Mme' ? 'Mme' : o.CIVILITE_ACCOMPAGNATEUR, o.NOM_ACCOMPAGNATEUR, cap(o.PRENOM_ACCOMPAGNATEUR)].filter(Boolean).join(' ');
+        (accomp[as] = accomp[as] || []).push(nm); T(as, '', o.NOM_ETABLISSEMENT || o.NOM_ETABLISSEMENT_ATTACHE); }
+    } else if (K.includes('NUM_JO') || K.includes('ROLE_JO')) {
+      for (const o of L) { const as = pick(o, ['AS_JO', 'AS_ATTACHE', 'NUMERO_AS']), etab = pick(o, ['NOM_ETABLISSEMENT_JO', 'NOM_ETABLISSEMENT_ATTACHE', 'NOM_ETAB']);
+        if (as) T(as, '', etab);
+        jo.push({ lic: pick(o, ['NUM_LICENCE', 'N_LICENCE', 'LICENCE']), nom: pick(o, ['NOM_LICENCE', 'NOM']), prenom: cap(pick(o, ['PRENOM_LICENCE', 'PRENOM'])), njo: pick(o, ['NUM_JO', 'N_JO']), role: pick(o, ['ROLE_JO', 'ROLE']), niv: nivJO(pick(o, ['NIVEAU_JO', 'NIVEAU'])), spec: pick(o, ['SPECIALITE']), as, etab, num: pick(o, ['NUMERO_EQUIPE', 'NUMERO_D_EQUIPE']) }); }
+    } else if (K.some(k => /LICENCE/.test(k)) && K.includes('NOM')) {
+      for (const o of L) { const as = pick(o, ['NUMERO_AS', 'AS', 'AS_LICENCE']), etab = pick(o, ['NOM_ETAB', 'NOM_ETABLISSEMENT']), num = pick(o, ['NUMERO_D_EQUIPE', 'NUMERO_EQUIPE']);
+        const t = T(as, num, etab); t.insc = t.insc || o.INSCRIPTION || ''; t.sport = t.sport || sportFrom(o.ACTIVITE);
+        t.players.push({ n: '', nom: String(o.NOM || '').toUpperCase(), prenom: cap(o.PRENOM), lic: pick(o, ['N_LICENCE', 'NUM_LICENCE', 'LICENCE']), cat: o.CAT || '', cap: false, gb: false });
+        if (o.N_JO) jo.push({ lic: pick(o, ['N_LICENCE', 'NUM_LICENCE']), nom: String(o.NOM || '').toUpperCase(), prenom: cap(o.PRENOM), njo: o.N_JO, role: o.ROLE || '', niv: nivJO(o.NIVEAU), spec: o.SPECIALITE || '', as, etab, num, joueur: true }); }
+    }
+  }
+  for (const t of Object.values(teams)) if (accomp[t.as]) t.prof = [...new Set(accomp[t.as])].join(', ');
+  // une AS sans joueurs, déjà représentée par une équipe avec joueurs : on la retire
+  for (const t of Object.values(teams)) if (!t.players.length && Object.values(teams).some(x => x !== t && x.as === t.as && x.players.length)) delete teams[t.key];
+  const insc = Object.values(teams).map(t => t.insc).find(Boolean) || '';
+  if (!meta.sport) meta.sport = Object.values(teams).map(t => t.sport).find(Boolean) || '';
+  meta.cat = CATS.find(c => normKey(insc).startsWith(normKey(c))) || '';
+  meta.sexe = /GARCON/.test(normKey(insc)) ? 'Garçons' : /FILLE/.test(normKey(insc)) ? 'Filles' : /MIXTE/.test(normKey(insc)) ? 'Mixte' : '';
+  return { teams: Object.values(teams), jo, meta };
+}
+const joKind = r => { const k = normKey(r); return /COACH/.test(k) ? 'coach' : /REPORT/.test(k) ? 'rep' : /ARBIT|JUGE/.test(k) ? 'arb' : 'table'; };
+
 {
 const $ = q => document.querySelector(q);
 const KEY = 'tmu_prof';
 let DB = store(KEY) || { sheets: {}, pts: { V: 3, N: 2, D: 1, F: 0 } };
+DB.ins = DB.ins || { teams: {}, jo: {}, files: [] }; DB.prep = DB.prep || []; DB.draft = DB.draft || null;
 let storageOK = store(KEY, DB);
 let view = 'list', curId = null, F = { q: '', sport: '', cat: '', st: '' };
 const save = () => { storageOK = store(KEY, DB); };
@@ -368,13 +477,88 @@ async function importFiles(files) {
   report(rep);
 }
 
+
+/* ---------- Préparer un match à partir des exports OPUSS ---------- */
+const joId = j => j.njo ? 'jo:' + j.njo : 'lic:' + (j.lic || j.nom + j.prenom);
+async function importOpuss(files) {
+  let nT = 0, nJ = 0, bad = [];
+  for (const f of files) {
+    try {
+      if (!/\.xlsx$/i.test(f.name)) throw new Error('format');
+      const r = parseOpuss(await readXlsx(await f.arrayBuffer()), f.name);
+      for (const t of r.teams) { const ex = DB.ins.teams[t.key]; if (ex && !t.players.length) { ex.prof = ex.prof || t.prof; ex.etab = ex.etab || t.etab; continue; } DB.ins.teams[t.key] = { ...t, file: f.name }; nT++; }
+      for (const j of r.jo) { const id = joId(j), ex = DB.ins.jo[id]; DB.ins.jo[id] = ex && ex.role && !j.role ? { ...j, role: ex.role } : j; nJ++; }
+      DB.ins.files.push({ name: f.name, at: Date.now() });
+      if (!DB.draft) DB.draft = newDraft();
+      const d = DB.draft, m = r.meta;
+      if (m.sport && !d.touched) d.sport = m.sport; for (const k of ['comp', 'niveau', 'cat', 'sexe']) if (m[k] && !d.meta[k]) d.meta[k] = m[k];
+    } catch (e) { bad.push(f.name); }
+  }
+  save(); render();
+  toast(`${nT} équipe(s) et ${nJ} jeune(s) officiel(s) importés${bad.length ? ` · ${bad.length} fichier(s) illisible(s)` : ''}`, bad.length > 0);
+}
+function newDraft() { return { sport: 'handball', touched: false, meta: { comp: '', niveau: '', date: today(), heure: '', lieu: '', cat: '', sexe: '', poule: '', num: '' }, A: '', B: '', off: {} }; }
+const teamOpt = t => `${t.etab || t.as}${t.as ? ' · ' + t.as : ''}${t.num ? ' · éq. ' + t.num : ''} — ${t.players.length} joueur(s)`;
+const joLabel = j => `${j.nom} ${j.prenom} — ${j.role || 'JO'}${j.niv ? ' · ' + j.niv : ''}${j.as ? ' · ' + j.as : ''}`;
+function autoOff(d) {
+  const J = Object.values(DB.ins.jo), used = new Set(), A = DB.ins.teams[d.A], B = DB.ins.teams[d.B], off = {};
+  const take = (k, list) => { const j = list.find(x => !used.has(joId(x))); if (j) { used.add(joId(j)); off[k] = joId(j); } };
+  const of = kind => J.filter(j => !j.joueur && joKind(j.role) === kind);
+  take('coach1', of('coach').filter(j => A && j.as === A.as)); take('coach2', of('coach').filter(j => B && j.as === B.as));
+  const playing = [A && A.as, B && B.as], arb = of('arb').sort((x, y) => playing.includes(x.as) - playing.includes(y.as));
+  take('arb1', arb); const a1 = J.find(x => joId(x) === off.arb1);
+  take('arb2', [...arb].sort((x, y) => (playing.includes(x.as) - playing.includes(y.as)) || ((a1 && x.as === a1.as) - (a1 && y.as === a1.as)))); take('rep1', of('rep')); take('rep2', of('rep'));
+  const rest = [...of('table'), ...arb];
+  for (const k of ['sec', 'chr', 'resp']) take(k, rest);
+  d.off = off;
+}
+function vPrep() {
+  const T = Object.values(DB.ins.teams).sort((a, b) => (a.etab || '').localeCompare(b.etab || '')), J = Object.values(DB.ins.jo);
+  const d = DB.draft || (DB.draft = newDraft()); const sp = SPORTS[d.sport];
+  const sel = (path, label, opts, val) => `<label class="f"><span>${label}</span><select data-d="${path}">${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(val ?? '') ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+  const inp = (path, label, val, type = 'text') => `<label class="f"><span>${label}</span><input type="${type}" data-d="${path}" value="${esc(val)}"></label>`;
+  const o2 = a => a.map(x => [x, x]);
+  let h = `<h1>Préparer un match</h1><p class="lead">Importe les fichiers « Tous les inscrits » exportés d’OPUSS (un par équipe ou un pour toute la compétition). Compose ensuite le match : la feuille arrive pré-remplie à la table de marque (équipes, joueurs, licences, jeunes officiels, jeunes coachs).</p>
+  <div class="drop" id="dropx"><label class="file">Importer des exports OPUSS<br><span style="font:400 14px var(--sys)">fichiers .xlsx « Tous les inscrits » — plusieurs à la fois</span><input type="file" id="xfiles" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple></label>
+  <div><h3>Base d’inscrits</h3>${T.length ? `<p class="small muted">${T.length} équipe(s) · ${J.filter(j => !j.joueur).length} jeune(s) officiel(s) · ${DB.ins.files.length} fichier(s) importé(s)</p><ul class="ins">${T.map(t => `<li><b>${esc(t.etab || t.as)}</b> <span class="muted small">${esc(t.as)}${t.num ? ' · éq. ' + esc(t.num) : ''} · ${t.players.length} joueur(s)${t.prof ? ' · ' + esc(t.prof) : ''}</span></li>`).join('')}</ul>
+  <button class="btn-d" data-act="insclear" style="margin-top:8px">Vider la base d’inscrits</button>` : `<p class="small muted">Aucun inscrit pour l’instant. Les données restent sur cet appareil.</p>`}</div></div>`;
+  if (!T.length) return h + prepList();
+  const teamOpts = [['', '— choisir —'], ...T.map(t => [t.key, teamOpt(t)])];
+  const joOpts = [['', '— aucun —'], ...J.filter(j => !j.joueur).concat(J.filter(j => j.joueur)).map(j => [joId(j), joLabel(j) + (j.joueur ? ' (joueur)' : '')])];
+  h += `<div class="card" style="margin-top:16px"><h3>Rencontre</h3><div class="fields">
+  ${sel('sport', 'Activité', Object.entries(SPORTS).map(([k, v]) => [k, v.nom]), d.sport)}${inp('meta.comp', 'Compétition', d.meta.comp)}${sel('meta.niveau', 'Niveau', o2(['', ...NIVEAUX]), d.meta.niveau)}
+  ${inp('meta.date', 'Date', d.meta.date, 'date')}${inp('meta.heure', 'Heure', d.meta.heure, 'time')}${inp('meta.lieu', 'Lieu / gymnase', d.meta.lieu)}
+  ${sel('meta.cat', 'Catégorie', o2(['', ...CATS]), d.meta.cat)}${sel('meta.sexe', 'Sexe', o2(['', ...SEXES]), d.meta.sexe)}${inp('meta.poule', 'Poule / tour', d.meta.poule)}${inp('meta.num', 'N° de match', d.meta.num)}</div></div>
+  <div class="grid2">${['A', 'B'].map(t => { const tm = DB.ins.teams[d[t]]; return `<div class="card" style="border-top:4px solid var(--${t})"><h3>Équipe ${t}</h3>${sel(t, 'Équipe inscrite', teamOpts, d[t])}
+  ${tm ? `<p class="small muted" style="margin:8px 0 4px">${esc(tm.prof ? 'Responsable : ' + tm.prof : '')}</p><div class="plist">${tm.players.map(j => `<span>${esc(j.nom)} ${esc(j.prenom)}<i>${esc(j.lic)}</i></span>`).join('') || '<span class="muted">Aucun joueur dans le fichier pour cette équipe</span>'}</div>` : ''}
+  ${sel('off.coach' + (t === 'A' ? '1' : '2'), 'Jeune coach', joOpts, d.off['coach' + (t === 'A' ? '1' : '2')])}</div>`; }).join('')}</div>
+  <div class="card"><h3>Jeunes officiels</h3><div class="row" style="margin-bottom:10px"><button data-act="autooff">Répartir automatiquement</button><span class="small muted">Arbitres pris de préférence hors des deux équipes ; coachs de chaque AS ; vérifie avant de créer.</span></div>
+  <div class="fields">${ROLES[sp.kind].filter(([k]) => !isCoach(k)).map(([k, l]) => sel('off.' + k, l, joOpts, d.off[k])).join('')}</div></div>
+  <div class="row" style="justify-content:flex-end"><button data-act="newdraft">Réinitialiser</button><button class="btn-p" data-act="mkprep" style="min-height:52px;font-size:17px" ${d.A && d.B && d.A !== d.B ? '' : 'disabled'}>Créer la feuille pour la table de marque</button></div>`;
+  return h + prepList();
+}
+function prepList() {
+  if (!DB.prep.length) return '';
+  return `<h2>Feuilles préparées</h2><p class="small muted">Transmets chaque feuille à la tablette de la table de marque : fichier à ouvrir dans TablMarkUNSS Élève (« Importer une feuille du prof »), ou code à coller.</p>
+  <div class="card" style="padding:6px 10px"><table class="list stack"><thead><tr><th>Date</th><th>Activité</th><th>Match</th><th>Officiels</th><th></th></tr></thead><tbody>
+  ${DB.prep.map((s, i) => `<tr><td>${esc(fmtDate(s.meta.date))} ${esc(s.meta.heure)}</td><td><b>${esc(SPORTS[s.sport].nom)}</b><br><span class="small muted">${esc(s.meta.comp)}</span></td><td>${esc(teamLabel(s, 'A'))} <span class="muted">contre</span> ${esc(teamLabel(s, 'B'))}</td><td class="small">${Object.values(s.officiels).filter(o => o.nom).length} renseigné(s)</td>
+  <td><div class="row" style="justify-content:flex-end"><button class="btn-b" data-act="prepdl" data-i="${i}">Fichier</button><button data-act="prepcp" data-i="${i}">Code</button><button class="btn-d" data-act="prepdel" data-i="${i}" aria-label="Supprimer">×</button></div></td></tr>`).join('')}</tbody></table></div>`;
+}
+function makePrep() {
+  const d = DB.draft, s = blankSheet(d.sport), J = DB.ins.jo;
+  Object.assign(s.meta, Object.fromEntries(Object.entries(d.meta).filter(([, v]) => v)));
+  for (const t of ['A', 'B']) { const tm = DB.ins.teams[d[t]]; s.teams[t] = { nom: tm.etab || tm.as, as: tm.as, prof: tm.prof || '', players: tm.players.map(j => ({ n: '', nom: j.nom, prenom: j.prenom, lic: j.lic, cap: false, gb: false })).slice(0, SPORTS[d.sport].maxJ || 99) }; }
+  for (const [k, id] of Object.entries(d.off)) { const j = J[id]; if (j && ROLES[SPORTS[d.sport].kind].some(([r]) => r === k)) s.officiels[k] = { nom: `${j.nom} ${j.prenom}`, etab: j.etab || '', lic: j.lic || '', njo: j.njo || '', niv: j.niv || '' }; }
+  s.prepBy = 'prof'; s.preparedAt = Date.now();
+  DB.prep.unshift(s); save(); render(); scrollTo(0, document.body.scrollHeight); toast('Feuille créée : transmets-la à la table de marque.');
+}
 function nav() {
-  const it = [['list', 'Feuilles reçues'], ['std', 'Classements'], ['jo', 'Jeunes officiels']];
+  const it = [['prep', 'Préparer un match'], ['list', 'Feuilles reçues'], ['std', 'Classements'], ['jo', 'Jeunes officiels']];
   $('#nav').innerHTML = it.map(([k, l]) => `<button data-act="go" data-v="${k}" class="${view === k || (view === 'detail' && k === 'list') ? 'on' : ''}">${l}</button>`).join('');
 }
 function render() {
   nav(); const warn = storageOK ? '' : `<div class="storage" style="background:var(--o);color:#111;padding:8px 12px;border-radius:10px;font-weight:600;margin-bottom:12px">Stockage local indisponible : exporte une sauvegarde avant de fermer la page.</div>`;
-  $('#app').innerHTML = warn + ({ list: vList, detail: vDetail, std: vStd, jo: vJo }[view] || vList)();
+  $('#app').innerHTML = warn + ({ list: vList, detail: vDetail, std: vStd, jo: vJo, prep: vPrep }[view] || vList)();
 }
 function filtered() {
   const q = F.q.toLowerCase();
@@ -460,14 +644,19 @@ function demo() {
   report(rep);
 }
 document.addEventListener('input', e => {
+  if (e.target.dataset && e.target.dataset.d) { const d = DB.draft, k = e.target.dataset.d, v = e.target.value; const ks = k.split('.');
+    if (ks.length === 2) d[ks[0]][ks[1]] = v; else d[k] = v; if (k === 'sport') d.touched = true;
+    const empty = !Object.values(d.off).some(Boolean); if ((k === 'A' || k === 'B') && d.A && d.B && empty) autoOff(d);
+    save(); if (e.target.tagName === 'SELECT') render(); return; }
   if (e.target.id === 'fq') { F.q = e.target.value; const p = e.target.selectionStart; render(); const i = $('#fq'); i.focus(); i.setSelectionRange(p, p); }
   if (e.target.dataset.f) { F[e.target.dataset.f] = e.target.value; render(); }
   if (e.target.dataset.pts) { DB.pts[e.target.dataset.pts] = +e.target.value || 0; save(); const k = e.target.dataset.pts; render(); const i = document.querySelector(`[data-pts="${k}"]`); i && i.focus(); }
 });
-document.addEventListener('change', e => { if (e.target.id === 'files' || e.target.id === 'restorefile') importFiles(e.target.files); });
+document.addEventListener('change', e => { if (e.target.id === 'files' || e.target.id === 'restorefile') importFiles(e.target.files); if (e.target.id === 'xfiles') importOpuss(e.target.files); });
 document.addEventListener('dragover', e => { const d = e.target.closest && e.target.closest('#drop'); if (d) { e.preventDefault(); d.classList.add('over'); } });
 document.addEventListener('dragleave', e => { const d = e.target.closest && e.target.closest('#drop'); if (d) d.classList.remove('over'); });
-document.addEventListener('drop', e => { const d = e.target.closest && e.target.closest('#drop'); if (d) { e.preventDefault(); importFiles(e.dataTransfer.files); } });
+document.addEventListener('drop', e => { const d = e.target.closest && e.target.closest('#drop'); if (d) { e.preventDefault(); importFiles(e.dataTransfer.files); } const x = e.target.closest && e.target.closest('#dropx'); if (x) { e.preventDefault(); x.classList.remove('over'); importOpuss(e.dataTransfer.files); } });
+document.addEventListener('dragover', e => { const x = e.target.closest && e.target.closest('#dropx'); if (x) { e.preventDefault(); x.classList.add('over'); } });
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act, d = el.dataset, s = DB.sheets[curId];
   if (a === 'ovbg') { if (e.target === el) ov(''); return; }
@@ -489,6 +678,13 @@ document.addEventListener('click', async e => {
     case 'restore': ov(`<h3>Restaurer une sauvegarde</h3><p class="small muted">Les feuilles de la sauvegarde s’ajoutent à celles déjà présentes.</p><input type="file" id="restorefile" accept=".json"><div class="row" style="justify-content:flex-end;margin-top:10px"><button data-act="close">Fermer</button></div>`); break;
     case 'jocsv': { const rows = [['Jeune officiel', 'Établissement', 'Licence UNSS', 'N° JO', 'Niveau', 'Matchs', 'Fonctions', 'Activités']]; for (const tr of document.querySelectorAll('tbody tr')) rows.push([...tr.cells].map(c => c.textContent)); const r = await saveFile('TablMark_jeunes_officiels.csv', csv(rows)); if (r !== 'ok') toast('Téléchargement impossible ici.', true); } break;
     case 'demo': demo(); break;
+    case 'autooff': autoOff(DB.draft); save(); render(); toast('Jeunes officiels répartis : vérifie les choix.'); break;
+    case 'newdraft': DB.draft = newDraft(); save(); render(); break;
+    case 'mkprep': makePrep(); break;
+    case 'insclear': ask('Vider la base d’inscrits importée d’OPUSS ?', 'Vider', () => { DB.ins = { teams: {}, jo: {}, files: [] }; DB.draft = null; save(); render(); }); break;
+    case 'prepdl': { const p = DB.prep[+d.i]; const r = await saveFile('Prepa_' + fileName(p, 'json'), JSON.stringify(p)); if (r !== 'ok') toast('Téléchargement impossible ici : utilise « Code ».', true); } break;
+    case 'prepcp': { const p = DB.prep[+d.i]; const c = toCode(p); toast(await copyText(c) ? 'Code copié : colle-le dans TablMarkUNSS Élève.' : 'Copie impossible.', false); } break;
+    case 'prepdel': ask('Supprimer cette feuille préparée ?', 'Supprimer', () => { DB.prep.splice(+d.i, 1); save(); render(); }); break;
     case 'wipe': ask('Effacer toutes les feuilles de ce navigateur ? Pense à faire une sauvegarde avant.', 'Tout effacer', () => { DB.sheets = {}; save(); render(); }); break;
   }
 });
