@@ -138,9 +138,10 @@ const NIVEAUX = ['AS / Établissement', 'District', 'Départemental', 'Académiq
 const CATS = ['Benjamins', 'Minimes', 'Cadets', 'Juniors', 'Lycées', 'Collèges', 'Sport partagé'];
 const SEXES = ['Filles', 'Garçons', 'Mixte'];
 const NIV_JO = ['', 'Établissement', 'District', 'Départemental', 'Académique', 'National', 'International'];
+const EXTRA_ROLES = [['coach1', 'Jeune coach 1'], ['coach2', 'Jeune coach 2'], ['rep1', 'Jeune reporter 1'], ['rep2', 'Jeune reporter 2']];
 const ROLES = {
-  co: [['arb1', 'Arbitre 1'], ['arb2', 'Arbitre 2'], ['sec', 'Secrétaire / marqueur'], ['chr', 'Chronométreur'], ['resp', 'Responsable de table']],
-  du: [['arb1', 'Juge-arbitre'], ['arb2', 'Arbitre'], ['sec', 'Marqueur'], ['resp', 'Responsable de table']]
+  co: [['arb1', 'Arbitre 1'], ['arb2', 'Arbitre 2'], ['sec', 'Secrétaire / marqueur'], ['chr', 'Chronométreur'], ['resp', 'Responsable de table'], ...EXTRA_ROLES],
+  du: [['arb1', 'Juge-arbitre'], ['arb2', 'Arbitre'], ['sec', 'Marqueur'], ['resp', 'Responsable de table'], ...EXTRA_ROLES]
 };
 
 /* acts : [clé, libellé, points, couleur] — couleur : y jaune, o orange, r rouge, f faute, s remplacement */
@@ -439,8 +440,8 @@ function vJo() {
 const csvCell = v => { v = String(v ?? ''); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
 const csv = rows => '﻿' + rows.map(r => r.map(csvCell).join(';')).join('\r\n');
 function resultsCSV(L) {
-  const H = ['Date', 'Heure', 'Compétition', 'Niveau', 'Activité', 'Catégorie', 'Sexe', 'Poule', 'N° match', 'Équipe A', 'AS A', 'Score A', 'Score B', 'Équipe B', 'AS B', 'Vainqueur', 'Forfait', 'Statut', 'Arbitre 1', 'Arbitre 2', 'Secrétaire', 'Chronométreur', 'Responsable table', 'Observations', 'Note prof', 'Id'];
-  return csv([H, ...L.map(s => { const r = result(s), o = k => (s.officiels[k] || {}).nom || ''; return [fmtDate(s.meta.date), s.meta.heure, s.meta.comp, s.meta.niveau, SPORTS[s.sport].nom, s.meta.cat, s.meta.sexe, s.meta.poule, s.meta.num, teamLabel(s, 'A'), s.teams.A.as, r.A, r.B, teamLabel(s, 'B'), s.teams.B.as, r.w ? teamLabel(s, r.w) : 'Nul', s.forfait ? teamLabel(s, s.forfait) : '', STATUTS[s.status] || s.status, o('arb1'), o('arb2'), o('sec'), o('chr'), o('resp'), s.obs, s.profNote, s.id]; })]);
+  const H = ['Date', 'Heure', 'Compétition', 'Niveau', 'Activité', 'Catégorie', 'Sexe', 'Poule', 'N° match', 'Équipe A', 'AS A', 'Score A', 'Score B', 'Équipe B', 'AS B', 'Vainqueur', 'Forfait', 'Statut', 'Arbitre 1', 'Arbitre 2', 'Secrétaire', 'Chronométreur', 'Responsable table', 'Jeunes coachs', 'Jeunes reporters', 'Observations', 'Note prof', 'Id'];
+  return csv([H, ...L.map(s => { const r = result(s), o = k => (s.officiels[k] || {}).nom || ''; return [fmtDate(s.meta.date), s.meta.heure, s.meta.comp, s.meta.niveau, SPORTS[s.sport].nom, s.meta.cat, s.meta.sexe, s.meta.poule, s.meta.num, teamLabel(s, 'A'), s.teams.A.as, r.A, r.B, teamLabel(s, 'B'), s.teams.B.as, r.w ? teamLabel(s, r.w) : 'Nul', s.forfait ? teamLabel(s, s.forfait) : '', STATUTS[s.status] || s.status, o('arb1'), o('arb2'), o('sec'), o('chr'), o('resp'), [o('coach1'), o('coach2')].filter(Boolean).join(', '), [o('rep1'), o('rep2')].filter(Boolean).join(', '), s.obs, s.profNote, s.id]; })]);
 }
 function demo() {
   const mk = (sport, A, B, ev, extra = {}) => ({ id: 'demo-' + sport + '-' + (A + B).replace(/\W/g, '').slice(-14), v: 1, sport, status: 'clos', created: Date.now(), updated: 1, closedAt: Date.now(),
