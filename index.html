@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TablMarkUNSS Prof</title>
+<meta name="theme-color" content="#121418">
+<meta name="description" content="Centralisation, validation et classements des feuilles de match UNSS.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TablMark Prof">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: outil de table de marque, direct et lisible au gymnase, sans décor.
+IDEA: le tableau d'affichage du gymnase + la feuille de match papier officielle.
+PICTURE: le tableau de score (équipes, chrono, score géant) est l'image principale.
+COLOUR and TYPE: sol clair / nuit ardoise, rouge équipe A, bleu équipe B, encre noire ; Barlow Condensed pour les chiffres, Barlow pour le texte.
+LAYOUT: barre d'appli, tableau de score pleine largeur, deux colonnes d'actions par équipe, journal en dessous ; tout s'empile sous 600px.
+*/
+:root{color-scheme:light dark;--bg:light-dark(#eef0ec,#0f1317);--panel:light-dark(#ffffff,#192028);--ink:light-dark(#121418,#eef1f4);--mute:light-dark(#5b6370,#9aa4b1);--line:light-dark(#d7dbd4,#2b343f);
+--A:#d7263d;--B:#1f63d6;--Ad:light-dark(#fbe7ea,#3a1a20);--Bd:light-dark(#e5edfc,#16253f);--board:#11151b;--y:#f2c400;--o:#f08a00;--r:#d7263d;--ok:#1b8a4b;
+--cond:'Barlow Condensed','Arial Narrow',Arial,sans-serif}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,Arial,sans-serif;overflow-x:clip;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;border-radius:10px;min-height:44px;padding:0 14px;background:var(--panel);border:1.5px solid var(--line);font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--B);outline-offset:2px}
+button:disabled{opacity:.45;cursor:not-allowed}
+.btn-p{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn-d{color:var(--r);border-color:color-mix(in srgb,var(--r) 45%,transparent)}
+input,select,textarea{width:100%;min-height:44px;font-size:16px;border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;background:light-dark(#fff,#0f1419)}
+textarea{min-height:90px;resize:vertical}
+.top{position:sticky;top:0;z-index:20;background:var(--ink);color:var(--bg);display:flex;align-items:center;gap:10px;padding:8px max(3vw,12px);flex-wrap:wrap}
+.brand{font:700 24px/1 var(--cond);letter-spacing:.01em;display:flex;align-items:center;gap:8px;background:none;border:0;color:inherit;padding:0}
+.brand img{width:34px;height:34px;border-radius:8px;display:block}
+.brand small{font:600 13px Barlow,Arial;background:var(--bg);color:var(--ink);padding:2px 8px;border-radius:20px}
+.nav{display:flex;gap:4px;margin-left:auto;overflow-x:auto}
+.nav button{flex:none;background:transparent;color:inherit;border:0;opacity:.7;white-space:nowrap;padding:0 10px}
+.nav button.on{opacity:1;box-shadow:inset 0 -3px 0 currentColor;border-radius:0}
+main{max-width:1240px;margin:auto;padding:16px max(3vw,12px) 90px}
+h1{font:700 clamp(32px,5vw,48px)/1.05 var(--cond);margin:8px 0 6px;text-wrap:balance}
+h2{font:700 26px/1.1 var(--cond);margin:18px 0 8px}
+h3{font:700 20px/1.1 var(--cond);margin:0 0 8px}
+.lead{color:var(--mute);max-width:65ch;margin:0 0 16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.f{display:grid;gap:4px}.f span{font-size:13px;color:var(--mute);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.muted{color:var(--mute)}.small{font-size:13px}
+.tag{display:inline-block;font-size:13px;font-weight:600;padding:2px 9px;border-radius:20px;background:var(--line);white-space:nowrap}
+.tag.live{background:var(--A);color:#fff}.tag.clos{background:var(--ink);color:var(--bg)}.tag.valide{background:var(--ok);color:#fff}
+.dotA,.dotB{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--A);margin-right:6px}.dotB{background:var(--B)}
+.ov{position:fixed;inset:0;background:rgb(0 0 0/.55);z-index:50;display:grid;place-items:center;padding:14px}
+.dlg{background:var(--panel);border-radius:16px;padding:18px;width:min(560px,100%);max-height:90vh;overflow:auto}
+#toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:12px;font-weight:600;max-width:min(92vw,560px);box-shadow:0 8px 24px rgb(0 0 0/.3);display:none}
+#toast.warn{background:var(--o);color:#111}
+.scroll{overflow-x:auto}
+table.list{width:100%;border-collapse:collapse;font-size:15px}
+table.list th{text-align:left;font-size:13px;color:var(--mute);padding:8px;border-bottom:2px solid var(--line);white-space:nowrap}
+table.list td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.list td.num{text-align:right;font:700 18px var(--cond);white-space:nowrap}
+table.list tr.click{cursor:pointer}table.list tr.click:hover td{background:color-mix(in srgb,var(--line) 40%,transparent)}
+.empty{padding:28px;text-align:center;color:var(--mute);border:2px dashed var(--line);border-radius:14px}
+#print{display:none}
+@media print{#print{display:block}.top,main,#ov,#toast{display:none!important}}
+@media(max-width:600px){.grid2{grid-template-columns:1fr}table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:8em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;white-space:normal;color:var(--mute);font-size:12px}.stack td:empty{display:none}table.list.stack td{border:0}table.list.stack tr{border-bottom:1px solid var(--line)}}
+@media(prefers-reduced-motion:no-preference){.flash{animation:fl .5s}@keyframes fl{from{transform:scale(1.18)}to{transform:none}}}
+
+.sheet{background:#fff;color:#111;font:13px/1.4 Barlow,Arial,sans-serif;padding:18px;max-width:900px;margin:auto}
+.sh-h{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:10px}
+.sh-brand{font:700 13px 'Barlow Condensed',Arial;letter-spacing:.02em;color:#c8102e}.sheet h2{margin:0;font:700 24px/1.1 'Barlow Condensed',Arial}
+.sheet h3{font:700 16px 'Barlow Condensed',Arial;margin:16px 0 6px;border-bottom:1px solid #999}
+.sh-st{border:1.5px solid #111;padding:2px 8px;font-weight:700;font-size:12px}
+.sh-t,.sh-meta{width:100%;border-collapse:collapse;margin:6px 0}.sh-t th,.sh-t td,.sh-meta th,.sh-meta td{border:1px solid #888;padding:3px 6px;text-align:center}
+.sh-meta th{background:#eee;text-align:left;width:16%}.sh-meta td{text-align:left}.sh-t th{background:#eee}.sh-t td.l{text-align:left}
+.sh-score{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin:10px 0;border:2px solid #111;padding:8px}
+.sh-score small{display:block;color:#555}.sh-score>div:last-child{text-align:right}.sh-big{font:700 40px 'Barlow Condensed',Arial}
+.sh-win{margin:4px 0}.sh-small{margin:4px 0;font-size:12px;color:#333}.sh-obs{border:1px solid #888;padding:6px;min-height:36px}
+.sh-sig{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.sh-sig div{border:1px solid #888;padding:4px;min-height:80px}
+.sh-sig span{font-size:11px;display:block}.sh-sig img{width:100%;height:56px;object-fit:contain}.sh-f{margin-top:14px;font-size:11px;color:#555}
+@media(max-width:600px){.sh-sig{grid-template-columns:1fr 1fr}.sh-big{font-size:30px}.sh-t{font-size:12px}}
+@media print{body *{visibility:hidden}#print,#print *{visibility:visible}#print{position:absolute;inset:0}.sheet{padding:0}}
+/* --- Prof --- */
+.drop{border:2.5px dashed var(--line);border-radius:16px;padding:18px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;background:var(--panel)}
+.drop.over{border-color:var(--B);background:var(--Bd)}
+.drop label.file{display:grid;place-items:center;min-height:120px;border-radius:12px;background:var(--ink);color:var(--bg);font:700 22px var(--cond);cursor:pointer;text-align:center;padding:10px}
+.drop label.file input{display:none}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}.kpi b{display:block;font:700 40px/1 var(--cond)}.kpi span{font-size:13px;color:var(--mute)}
+.filters{display:grid;grid-template-columns:2fr repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.sc{font:700 20px var(--cond);white-space:nowrap}
+.std th:nth-child(n+2),.std td:nth-child(n+2){text-align:right}
+.std td.pts{font:700 20px var(--cond)}
+.pts-cfg{display:grid;grid-template-columns:repeat(4,minmax(0,110px));gap:8px}
+@media(max-width:700px){.drop{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.filters{grid-template-columns:1fr 1fr}.filters input{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<header class="top"><button class="brand" data-act="go" data-v="list" aria-label="Accueil"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEQAAABECAYAAAA4E5OyAAAvDUlEQVR42s28Z5Rc1bH3/at9zukwPTnPaEY554wkBBJJgMhgkZHBYMM1ycbG4CjAxtcRMFxjG9tgk01OQoCIQhKghHLOmtFImjzTMx1OqPdD90hC4Nf3/fA+6zlrndXdp9M+tWtX/avqXxv+0zFvnmHeBzao/KePCmD+Lzrl6HuY8b+/h39zqDDnecPzF/uHL928qgwoc3wJuUaVwBUAx1fNkU7TnhQhWaU4QOAd+e20CLgQiip2SHByINGmNGwC1wU1mc86gBcoACYwhG3Fzf5Gz3XbP2rMTuah5798VRwn85tGAvJzE0XV0YbOR05rD4AAYM5z1hfu6X8lkHlquFsCAG5ZNcgY+1JNJmfhJQaJ7xcReCENFFSx1CNQCNwwlpViYLgJJQDNvJ/5C8k8BC6a6IYgDdF8TElfTCiK0QAUNDtoVUXFZL6j2ROFQDNTj2Su9YxevzCRoIrvBXR2+6lDHalGur1V2PYrE6bHXlp152ntelhTRP+zQHokePnHRVJWMI9E/FriHbm0NEB3G7hJVVU1IggBvhcCcWVO8Xr9XuViHRNpEABjjKoK6qXQpGIM2EWFWP2nwoiTxB90Esni4SQkpEk3EC8AESFsKbmO4BiOuWk9IliOEcSxd6Hg+kp7t2v2NKV4b30bzy3dz/rNB3cTtn9pvXr+X30FVAX5olDkK4Vx4+KJYnIel9bmYbpnrWqiwxMRQSxBRCyjeEEIAodTCjfxs6p3ObFwlwIE2GgQoN0BxkVMSS4MORFGnk9T35PlQN4AbfKQZBqigU/MUc1zkDwHYjaEDTiWKJqdRfUzwzQWBFnFF+vw6DOKmF1lIoe1SgSMZXpUKkilXJ74sN7+2b+207C/7dlpJ1d9a+kd0zuPFYp8aZl8+5PjjOUs0L1binTf5jR22BLLElQRFBHF92L0Dh/i3n7vcGXJShA0pWFwU5gkOBGE/sfhjbqcLb1ny6bQQFoCiChU2SmqogEVOYbCiMGgCIIxQqAZUxGoYowgqhAKZQbqplEn+zydRsUQBAHhsJ01oeB5HoHqF5VIIVDFsYxatq37G7v8Ob9bE1q6uu7jyWf1OXvZrVM6s6qoRwTSMxs3fFIttvMpezbX0LAjTShia3Z9WxLgqwOBxTcqP+WXfd6iIhInHYTUT6cJJcEqLhTGXMSu4VezNDZV9rgWVWGYWAa9Qy4FjoJlADtjC30fY2Vm23U9QHGcrKEkwMMgq95AFz+run0ZUt4XOfu7omPPxPZdsBz2H+rgQEu35jiWDOpbjCWC6/uIfHG+VVU9P5BoxCGV8tOn3LUivGTF7hd14WVz5OIjzkOO1g65efmLNB26kC2fpTUUcTK6GIgtqOdGqY628eCA17iodC1gk0h7Gk0BlVXiTfwGH/f7Bh/Qn8BDJuWlOaFaaGpo4d2luzlz5iB6VxeSdn0eeX0TURuuOH0YD724Ro0x8r1LxiAiLFpdr/98cTU3XzdDxu99kfQbD0H1MAgZePNJNRGQW/8hXZOv5Af3va3/fHsrydYu7BxHJ4+skvn3XyT5sTC+HyAih9WkZ034gWokHJLGtoQ7/ruLQvsb2m7g7Uv/EmTNhcUctXhYAuu/Vswilfol25a7alkOGiAKlgnEd/OYVbKRV0f8k6mFe0ikBJMMCFVWS/dJd5pXpjwif4qdQyNFnFmalKv6+gwrdXATLlNufTV45pk1Wl5bwIxxtfLCB9v1m7e/oRsOdVKcG+bWX72v7y7ZoaOGVsiI/qXMvuMN3n17m46r9Zi45lekek/FWfwMzk/eECsmeGvX4gwaKt9+29G//fkDHT6qWmZM6sOufW1UlMTk6rNGiZX1RD3yQDLPRUSNQMrzpSA3IlWFtrzw0a6Jw867/rHGv5/XDSo2wzPCC8S/keYG1E2DbWOyKue7Mb2l9n3uH7QAE/ik2iBaVkBq6o08U3sL7yTLtU8a+XbvpIwstwCbZCoghGHx+gb21bURqs3j+FFVArDg013YxmPWpF58vqMJO2SQiM2vnlyuw3sXsrOuWSODKzm+LA5vr8Y5bq6kHtjEZfd8qpPHzOHH//gOTaaUZ877k1rFuVQURPT0yX1k7hnD5PRpA8QYwT+8ZL7Cfwg4luC6nrlsZq1/32s1VStW7J5j4C/BjA+tjCG9cWU1ycRMbdqnGMsyoKoG9R0eGvwyfxjyOl6XBwGET75GXrlwhczN/4Us7y7n9v4pfj7RZWS5TdoV0lkgZYAPV9epdKW0tiKH8UPK6U6kWbphv3phw6h+JSzb1KCe7+J6Pqt3NQfX/fodUvG09i22GTRxkng5eZhHf6Bec71+tqODn/x8vj61vJvS/DDXnT1cfN9j4TubuPanr3LN3W+yYPH2jPXRf4c1ETTjivwgACyunNlHUblQAGZ+GJgsPhlH2s0nmfDFQlQNdmDp0yOe5aaqJfjtEBoyVZZf+h5zez/Ks20DuKFPkj9MdWVUmSWprCBM1uvZliGd9li0ul7VdWXm6CrJi0VYvrGBXTuaKKzMozDHYfWG/VSURTlncm/x4yk+2XAokKTLjBHFEqnsg3/9o6hvk9+9U95+8GJieQ5PvrmKg81xpo/sxaK/z5X7582W0poSGhva9Ln3t6gxJuuGvyyVAMVXRVV77IuZMaJQnPzImJyrXirh7rsDOzObZoD6HkZ8RUNqApVnRj/DRbE1ip0nbef9jD+W3sJ7h0Lytaok35xkiDg2KTeDAQSOGDAU23aoP9TB+p1NWLGQbtnVLE++uU7/58XVBM0dnH3mEGnrdgkaOxk+ukIe/sGpsmjV3yXloyknkDEDyzn7the0Ja6899BKfv1qnTZ0LuLM04ZJNGwxd97r+s6b6/WUM4ZLv94lxLtTIIFccupQyZqMLyE3VSXkWIDB9z00UAh8qSmJanlxuKR+e7xKoDmjIUFQgOcigWoQ2PLY0Of0otgaZdBMefeSpXqF831d2yz6h4kpbh5n44gh5YIlEAk5hEMOjnXYguG6LuXFMU4cUSF+W6cs/mSHXvWdf+lnH23SASMr5b+/PYM3Pt6O39op00b3oqaigJsuniDJ3QdNJObIpOHVbNhxiE9e+5RvPbqXDs+wZPVe2prb5M650xg1qBzyQrz31jr928PvQyrFb+44g9nTB+K6LpYxh+G9qqCA41h8squTV9c04nqKEcELlNyorbFYyCZIxOQoQIClLl6Qy719X9YrKz+nado8+VOfn/DSblvOrkxw5wSbWMgilc4sDUsUEcPbG5s42JnmjGEllMYs/CxqtASevOds+U3/Yj7ZcEDDjpHjR1bJ9RdPpLIkj8tOG8zIPoV899JJuK7H96+YJKlEiokjqnTi8Cp59bcX8K2fv6lP/msx40bUMHpgKd++ZLIOH1Auv7v1FL5xzhjZuLNZ86I2E0f2oqQgIgC+7wM9QPeIZny2q5MfvrFT40mPnS0VfPekGnFdH2NERSzwPYsegdgkNe0VcGnBO/xo7AaWz5jPb2W2bt2e5rsjUvL14Q6BT8ZOGPB8JeQYluxo5+639qgbKAfjLref0kdc38UygucH5MccfnXrqRL4vhgBjIXve6RSaeaePfYL67vQsfntbbMOu4PRg6v49IlrZd+BDtrjSfr3KtSQjeyuO6RNrZ3E491i+V3s2N3Gex8v5WBDq1549lQ577RJpNMuoVBGY5MpBQztKU+7Uj6qQku3d9jGZmBKAL6lALYB0kGRDLXf54kzD8qrpy6RPzQN03Rrt9w72eGsvoa0C4pmcYnghDNrsTBqkx+xSHkBhzpdIEAE/CAgnIXcwGE0CmBZNpaVCUmS6TRpz6OtM0FLayeNrZ20dnRxqLWT/Q0tHGjq0LbOOAcaW6W+oZkDzXFNJ5OQTmdmxbKz2DwAy/DEW0t1wxu/lWGDatlyoJPl++JcOakCAp9TBxfKwRN6aUNHWuZOrsD1MmOVY2Je2wBBYyfnTa/ixdMW8Lu9lZrvJvjF1BAzayHlgqCEHQNYxFMua/d06MaD3ahmrjuWcMqgAgmyUX84FGJvfSMbd+zX+sY2Ghvb5FBLJ81tXTS2ddLU0qFtHV20xxPEu1MkU2nUdTNRjW3ICTsUxSLkF8QoLIhRXVqkk0b0o7K8iLKSAqpKCygriFFekk+AcO6N97Fl6z4Ki2K8sHClfqeyiNc3toEG/PGjejYe6GLe7H5cdVyVZBIMQXZx+HQmfMQAjsloiA9gWpgfPpVVB4o1mkrw48mOzKyBVBpEMmuwrjXFc2uadNneTpo6PPV9BQkk7BhKYjbVhREMAeGQw0OPv8W83z2jra1d5JcVUBCLam5uhOL8KGVF+Uwc1puSkjzKSwqpLCuiMC9GQV4OhUV55OblEo1GcMKZ9E8qO3wPSLjg+ZBMQXcaOg0MzvMgULzuJANG96ettYMdBzroTPncckIV1z69me3NSVbXxZk1LAwY4imfJTubWbO/Sy8cVYJtGXADOWxDMIau7i5ct5jbxlhycg0k04oIhByLfa0pbn55p1pAacxGc4S0qyBooMrBTld+9MZOfeLro2THlm3cctejCvDofTdy3qwposbScDSEbUNnAK3tkEi7xBNJ9h1opy7tsrMpoG1HHa1tnbR1xGlt76Ch/iDFsTBNjS3sb2yhu7OdssGjmXrFtdoS72ZAeUzODu9l8+79EHYoKyqkKC/K2malI5HGsiy+NraMfyw7xJbGbjYd7NaWbpeNB7qZ0jefy8eXS2Weo+kAsOQogeBL3BO+PgQ5f4CQyoIsyxiSbsAP5+/WEZU5zJvVW5Kuz60v7SSe9NWxBN+HsGU42JnkrU2tLHr+faQzyYwzJnHZnJN4YrWnKS8gIM3zjz/LhhUr6F1dip9K4Hkup04dyYefrmP9qq0BRsBNZ4KoRNycc8FMc8KIYQw5dRj/9bM/6cENWzWvskZCjg2+6vDSiKz/dBt+ZwK7IEZ+Xg5FeTkU5uewc10Tc5/cSDLt41jCs6sayY/anDu8mPNHljKud75AQCodZNMMGaNqDEACplfA1QMy9sqQ8dOWCL99v06HlUe5d3YfCdlCU5enLV2+RkKWBgG46nPnabWcPLSM9qYm3ly6XtWxueqsyaxvhD0tKcQOsWfHLha/8IIWW2me/sVcZoysYerASk4Y1Yff33kl4nsayYsEBRUFRIrzFcfi+9++hPyiApra4wS+Irk51IyeiI/gqkp1TsCSFVsgUMqKcok5NiWlhXLu8CJ59NIh/O68AcwcWEQ8FVAQsYnawuUTy2Vc73xJply8rGHNTETWAQhAOmBIvmbztD0BonD/R/W6cGsbRTk2rhcAhhV74/iqGraFeNrjwrHFcsKAIu46o5901e/SvTv2U1xbyszjx7P+QEBeWHBCsG75SsTY2tjl6r4DzTz5xmK27ayjqS3OD3/xqNpRR+6+5SL7tz+4yg57SWv69LGyefNOGhubKSoqYP+uOnUKCynu3Y9kMkUk7BBNx1m5aTcYoVdZEW7gM6B3ecaNRywZXB6VH53eW6b1K8B10cYOl3c2t2iQ9YYioKqSsapHYjCwkfRRGXrLZAzP4l0dxBxL529oJuUFrNzXoU+taNT8sE3SDRheHZFrJleSdl2J2vDGeyuRpMtZx48kVFxGXWsKx7bo7Eiyac1aJeUxY8IAmlvauOLs6bz4xM/ZuK2OVRu341sS/OqPz/nfv/fvQXtjM31qyxgxqIbivByef/U9cOMmr7DAFFT2ojuRpDgvJB2HGtjZ0Aq2RXlJvhiM9KkpAwICIJHyAcMFo0sJFEJia317GnMUsj+M9bN5qSxSNSpZhClkcERBxGLOmBJ5bX0LZ48sJ+xYPLWyUcOWpbaxAF8KojYpX8mLOKzasEuXrt6GxqJ87YzJbG4BY4SCgjAbP99A3ZYNYAfS1tws//PYK9RUFPGzX/2NtvY4OXkR3LRn4uk0BL6Ey4p46pUPZfnmfbi+smvvQZx+g6k56QK61aLbTTC2IMT2tTtJN7VCfoyi3JiGQzblRYWSTqcBwTZCEAS8vbkFyzIgSnc6+EJGIJM3NGA7Rwsk4EhOSVXE4Pkql04o55wRJRKLWDR1urR3+0QcC1XIDTm6pSHB7S/v4IezB8j891eRPtShfUbUyugxI3irAVpaOjjU2EZHtzLhtHME26HddbHtEJsDoAWMU8ak88eI4zjiBkJN/17Y+YX0KSokJB7GcYjlhAk7DiEHWuOuvNNla3UOvL9qI+VjJkG6Aw18yopyhcx944QNnqd0Jj22NaY0NyTEUwH50Z4c7DGlGT+LQ45IS44KDxVE1HV9CVmZ1yvruzThKhHbkPI8URECEXa3uSza1qwLF29APOWM44ZiCvNY+uYO+qTrGNKnBKevw5kDT6EwN0LYNtgGjGXEGDCqGFCMob2tnXte3sQ13ziNjsbfsKNpGxr4pFJJbY03ih94TO0/hek1v5Cw28WW3QfoP2sOiaXz0QCqazL2I+EF7GxLM6Qil6h6lOc57Ex45EUtTh5UIBAgRy8ZVUinjna7SM+SOVwCyRZzRISuVMAbG1uxDTR1p+TSCaUypXeevLOlVdc1eZjWg6zYsEc1L4dzT53I2oOQOLCX664aJcu2NrJpVyMjehcyclAtzfEUjmVQzRTaAkVdX6kuikptoVIQjmG6F+jPXr1Lw1ZmLjvS8Otzf89zax7jlc9fZu5ZvyZ5cD+NaUNRdzcx40vC9RhcW6INnR53L9hDQ6fLT2f1ZnR1jIhj8AIYWh5leHkOnpvNt2bjvy/bkJ5K21EZhExIJNi2zeI97drY5ZETEvnasBK5eHQptm0xLeVJ0qR1/ZJPSDS20m9Eb8ZMGMm97zYwc2Aua3a1sGhVnfqBMn1cH3np84PUNydwHKN+oOSGDKV5YbpTPuP7F+vOz7dIZU01Gw++wMDiAcQiUTbu38Ar170p8XQnm/fs4tKJl2FCYQ7t2kZQ3ItURyflUQeCgGhRCT+av4uhZVFOHVzMXz89gApYfsaRjO0VE4yF77kZ9xqAWA4E3uGy6LFLRnqqhyKZPMLTnzfqgq3t2I7hxuMrZEJNPq7rkUi7/HFZk06rzeGF5ZtUvEBnTxtmusJRtm5czvfmDmbz/jh9q/OkuiSXfjVFum97OyNrcjHG0J3yGN+7QMbW5h2uzz31fAfDJ/dn/tp3tba4n/z8nPtp6Khn7d4V/OTVn2h+FEqLJogR2LNrL4l4kuTmtYwdkK8d8bQM6FUkd5YUMaQiBsDXxpbw4KIG/WRnJzkRS6b0yRMCP6MdgQvhKMF7fxbq4lA146glE3BEQ1QFBMc2/G1Zo76ysZURFTlcNqaYsdVREimXaNjh9XVNGsuJUJpsZvnaPWh+2Jw3azKLtqYZnO/RnQ5k+75W6g+0k2crrWmRQESNMQSBErItWbS1mYWbm4mGLL1waI7UtYuOyt3N3rY6DrRs17FVT0tpQRlLNq3i/FHn8/HWV8jLGYnlIvUNzXpw1SoiRblER00TH5uyghhlBT4Q0JXyeW5ti649mMA3yNnDi+lbEsZ1FZMVBusXKv/4jorzG8jajGM1BGMMIcdiweZ2fW9nB1dPKOPsofkScSxSaZ9o2LC9KcGy+m5+OKNG/vTIEk03dzBwVK0OGzNC/vrsdq4cU87W/V1af6gDRWTo0N76yY52GtoSErYNAaqOET1jeLFEHZFwOKQ7tm0lHc6hJNJBqjtNVX4uD7z335w38CrGds0VN9nKyedPltb80UT8Ll2xcTcScuhVXkQi6Wl5ca4AvLmxTes6Xeo60rQnfM4YXMCEmpj0KwnjeYr4LkSiBFsXYz14MSJpVKwMY+CIQMxhixpPBzz8WZPuaktz54lVjKnOEd8LSKZ9LBGauzyeX9eu1flRoni89sFqxHeZPW24HAhC0lpXpydefByvfVpHbiwkE4ZUMHZguaR3dzCsIowRwQ9UIo4wvk9edoFasmD+QdpjJRzwp3DPpcsk5aZwwlE6t7dTGLik3LBs+9jS2MANmOKwjBsxSOv3fUZFeTGt7Z0cN6Yf3T68srmNXvkhLhldwrCyiBiTMQJu2ssslUgUWf2mmocvR9wOiDqQPOJQsgLxRIMMYFl3MKmrDya5fXq5jKyMkUi5CBBxBIxNiWMzd0KRfLo3pQuX79AN2/eguSE5Z9ZxsnBNGycPymXN7napKsnRgpiN78PK+m42HegiFrZRVQIgnvL5YGs7CV/1uuMq5PPdLVo6aIR+VpdGGI4lQptvcUKtK7L6DZ0yZYJ89vlmrF0+C5YcZPqYftTvP0Rx1Kalo1tGDKjmoz0JnVSTK9+cXAoInhfguV7GkYQjmVt98z548UeIuJl6RXcanNCxAgkylXPg471dXDiiiJGVUVJpl2g2O9baleaD9ft5e02TfrZqP+VluUyvOESyqYO+Q3pRM3SY3vfPNdxxQql8smE/V50+gg9W7KKkJJ/PdrTSmUhjWxn7YRvh0kkVlOTYYFnS0dioaxp9BkzMR90EPinafGFEvi/OhhU8M38p04+fwF9+8x0JgkxE+vi/FsqIgTWaW5DH3oatVJSXUFkV4uSaInzPx/cDjBhMOJy5xX3rkBd+rCx/HWzQAOg7Gs66A16qgWU7jhaI3QNRGFUekVP65QCKZQyf7YzzwrKDLNnYQms8rSU5QlVZDuccV8mbry+FlMc5M8aRDoepshPMOG4yEq7TzzYdkL7VRUwfU8uAxtRhgasqloH+JeHDs7JxQwc1gwcyoCJXkl0mQ5fJiVFVt0LobOOmb1ygTU3tGTJSOkUkEuaEqaPYuHMfAwf0ZcGi1Vrbq0zyoiKuZxPYBtNjHXevQhY+qPrhPyEJVBag/U9Ej79KZOJ5YIdUX/oYrNAXgVnPKjpnSD4I1Ld6fLyjg/1taU4cVMBNp1RTUxwRK5sfbWtr58fztqpVUqArt9TJWes38LUJRXy2drsWhI0Ultn46rJk1WYitslmwvUw8Nu33SNQVRDpSqSZO8JBOtcQBIGoBtAmmFjA8s60nj92sPTtXUUymcK2MzyRwvwYpUUxNu1qIBYJkxeL4no+kuqCfVtg40fw+WvInuWqOXkw7WIJRsxChs6AyoFZuO5DKoUYC0LhY7xMDx3MD3AsQ8iC2SMKyI/2rC8fL2tcDYJlhxjSu5zPPlknSxd9zhkfrgTbAtfLEDJ6aopGDrv0DJlFjzBaMvJQTDbrfHSxLVDQQC+46CTu/t1Tev3cs2TKxGEkUyls22Z33UFtaGjjgX8tYs6ZU4Qghb/2XewDm9DOg4gVQU/8BvT7o1AxEELRI+SIdDqzZiyLI6rkfQGYac9oBMH3A4qigip0J1KHl49lMnGIKuTlhHntr3fIux+v1pSXseC+74sxRkUEDRQNfBTEGIOIydRTgwAxghjzRQH01KKNqAYIqqgGuJ7PlHFDeOSx17Uj3iUnnzAuG48qZRWlXHDyBO6++SJ8tTBDT0RHzYIsx+SwAFwX0ilQJZAMRQcxmEzdJoNAvC8a1S8wrcLh0LE8v+zvuohmUKwXBJSXFnD5BTPkf89s/F8dX/n9e350tezevQ/bsnBdlwmjB8mE0YOOBKu+jwnHsC0AFy8VQI9BzTITA5RQ6CjGkesiIioiYDlfRKo969u2DXf9+hHWbtiusbxcFOhqbeOc2SfKN648n3Q6fXjEp194s/bpXSWPPPAjOuNdRCMR7vjZg/r5uk3yrasv5OmnXtOf3/0dGTa0HyHH4e33PuGPf3hUr7/pKpl18jQ0UAIN0ECxLCtTJzZCEChnfe1mHTSglv/5/Q8FVUqK8mnq7svuA53UluVwoDlOXXOSUX0KWL+nnSE1eUTDNjv3x3F9GFgdIVj0tOqWxci4M4SJ5xICdh/oYE9jt/YqisjAmkJSaVcUPYxUTU/erEdBDjW26V8ee0lfnr+IJ598TZ/615u8+uoH5MVimkgktTuZwnEc9tUf4p03F9GvT7UmE0mNRsLYtsXTry5EjdGFH6/S119+Xp94/k1CjsPGTdu5/Js/0ddf/4CcSFQd26atrY2Q4xCNRvB9H0UJOQ7btu/W9+e/r716lWNbFp0dHSxZt5+hl/0r+Plz69SyLK657zM97Ucf6OPv79LJ170a/HnBdrUsi+Nvfze49uE1as3/lQav3Evo0EbRH56nzlu/5+F363XUta8EM298Qwdd9Iw++MI6DYecrMnzjkohkmFNAOTkhOXzj56SR+67EzuZkF/Pu5H6HQv516vvUzvqXMZPu1zfencJG7fsxoRDvDT/A3oPP4tb7vy97qtr4GBDI+NHD2HXnjoIl/P2+59oY2OzXn7DXdrS0Ei/CaMJNGD8CZfp0EkX6owzr9N9+/bzvZ8+oJNmXqGTZ16qD//tecIlhTJ6+ACmnDJXf3rPA/rJlhYlmeK4QcW4ns+Hmxp1aN881u1qRYNAn1u8R1dvb9YDTWlGOXtgw3uYaXNkxYxfI5ffyP5kjt70h0+0siQsj/7oBLnirMGM6FuQMfN+cKQicyznM+Q4VFaU8Pn67XgKs2ZMlqrKUqmsKOXmb13CwZZ2fv3Hp3XZ5xs1SCQYO2o41X2q+dPjL/PCq++pqlJdXsrazTspqa2SfQ1NzLroJnbu3kekOJ+BfaqIRcJMmTCSa6++hMULP+Yv/3xZP12xjvVrt3HcpHG0d8ZxciLc+/vH2Luvgbt+fAvLtrdD2Gb68DLZuKddk01xHd+vgO3746gtsm5nC794ZjX4nkwf0xd2fwo5OXrVk216ecNlWKdeL7Ggk+27WvXPb2zVmZNqOGVib1JpN0PBSiSOFoiRbP4dyzKk02ne/Xg5xf1qGTa4L8+8tFDXr9vC8pXrsYxQXV7MkmVrGTJ+OH+9/w7OnnU80VCIZas3UlCUD0Zo3lPPbddfQk5OlNUrN3D37dfiJ5MMH9yXz1ZtkPXrNrH689XYJUVo4LN5+16+e9vVPPTbO2R3/UHizR0sX7qaf/xpHqVlpfL+ij1U9sljeJ8SPl5/AFIp6V+ew5qdzYwYXCIlBVFe/GiXhsMeQydNpPv0n+GsfYUHvzWSN95eQ92+A/rGL0+Xq88aImt3NfHNn72j7yzbq+GQg+/rYe9hDjv9rIaEQw679x5gx6YdnHL8eDq6urn8iu8zfMQgrr/mIjpbOxjQr5Ztu+opKMxnzbqt/OVvzzNu1GCaGlvpU1NBY1MreB6XXDCLsUP78fO7bmbQwL648S5SyRTf+c69es01FzFp0ljwfcKRMMnmZmadOIGOzjjr1m5l6vTxEinM45mX3qE1Hmhza7caDfjnO9v0Dy9t0NzymJTkRdi/s1FvmD2Y8ydWiGlPMLp3Hr/751ImLRjN0tMe57HXN3LuzH587+HPuPn+JRw/qorRfYsEFMc2WXMhx8YyBjFHLn60eAVBRx0zpowW9X0ieTFeeu1dPlj0WQbHeC4HDxwiHu9k7JQ55BUVcfvNc+XrN92js0+dyqdrtpHbq5rqPn3kmcfvoyDqcMW371Hy8hkzfpSQX6i//J9nae+IU92nF3UNzSgWEyeNY8WaLRrfv4Pv/fkeFry7lL8/+Ag3X3exXHf2CP725PLg6jvnQ8TmibtOJR5PQWunHD+0SKYNKdE/PrxExvQt4PTJvXn2u6/rt9yEFDrKpacPBTHc/OuP+eaP3oaoxfWXjZETRldJKpXNnomlX4TuWQ3xPJ9pk0byyiuPyeTJ4ykvL+Wj95+RXfsO6qjRg6lvaKSmslimn3QCA3pX6apPlzFu5AD6VBTy+LyrGDKwDw31+8W+fCrhA5sII/jAf508QOZOuUFPPWkoA//wX5JMe9TWVtER7yYcjXDB1IGUSpJ+BRavPvsAM6eOYPq4wXLWiaM0Pz9H//rdkZw9udo0ticZN7xSJvQtYE+rp2+/0JvRQwsRkAXPXc+IvoXU5sOnL35LPlq1h5F9Cjl9ci8sYMa4ajbvbKG2Mo8pI6sIfB9fRNEA0pkuC7EB79RXfva968bd/btLervJRNKORCNHwFjrQZz4fmjZA3WblaY9cGgvpDoh3pphJid8kr4QKS0EzwjRmGJsvJQvagwYo05uHhhb3O4kTl4sA5mDLHxWIGSr2xHHidhCLIrf3YVlW5CTq3g+btrFyc8VnDC4hpRraTgagdyQeL5BwhG1cnMFwqTtGKHiMsgvAAnjBRGCcC6haM6RECWdxjIGXwlG3bHE2rqyfppZdMUnx/oaiEZwO5oIPnwCa93rarYvJ90YzySdCwStGAq1I6DXWKgcKKE+g6GgTCM5+eKmhMB2EDskKgbLtjNJGUXSWfafZVmk/OBIDSDQbIgTiGWEdKCo72MZwQ18As8TIwqBT8pzUc/DBB6W70raTaF+Cktd1Hcl5bqI7yJeglTddjSdBjFYkQjGycGN5KoW9oKiahHbAVHURzJNBd4XClXZiyC712Ie+JqazdvQCDB4BOb0s4URp0LvMUhB2WHKSQRYsHyfbl+6j4KCTuacMY5QyOD2VAC/AoL7ANaXujmOvPcVz4NjcL3+v3z2WEKm1RMLBCBut0hWK3tacMQYRcyxscxRbSl/vU7ZtQ09+zJhxnXo0BMOB0s9gws174JDy3no7QTNdqWcPW0A63ce4of3Pstvz3CJhL1sW0aWAmgfcWZfioCPrikayZxekKmXBHoYDnwhYuaopiKVL4tBs/WW3Cr8AaeJWiHw0mCFM3fc09xkJFOC6G75Uj5E1QmD14wGInrPfBgzu8fKQioBxspA6/k/1E0L3+Lvn9t4J93CA/eeLhAwcfxAngqHmPXt72vvooC0q4gEigqd3d24rk/IccjLCSEGejqyjGSzBSJ0dSVJux6F+TEsy+B5gRpLMJKJbxDJ5mSDTPuIGHxfERVEJNvVZBBVxLIZFW7jphn3afjbT0mQW4b4fg8BJNOHY0XglTugrhCKTzlKQ0QM6oMdQ37wOhSVZ8LlnkKwZWe4nn+fo//93Gbuab9Yk80+j4wfLQBtHQlyc6JMHddPr/RnKocU1Ms0wgQ+048fLIN6l7NiUz3rPtuuuC6EEAToTkJBDDoTjD9pNCcfN5Tf3f8KJDylICdDckslhFgYPFESLuTnQNqHlA/5UUgHWRq1Ceih0nkBxArZ+fIz8ud+v1D/0v8R8dyMwfRdJBxFF/8DXrsPwg9Ayjsq3W40FY+ngAiSV5oRhrGyXUw+vu3gLP0jj7y0hh+1fFN9QU0orv946VPS6cyM2rbhz88uhs4DGo0mg5DdrbbbokNqHJ746Zn0irksvH8Os2dUy6wZvWTiqBKG9s/hv66ZSkmex3GTKnjnvkvo3L+TKaNLueSC4WL5zTJ4QERuuHoqvatCjB6WK9d/Y5Lk5nTLqOG5MveSkRINdcjoYREZ3C8kQ/o5MmZYvkwanc/l5w2ioMiXhelRpPbtxIJMH5+frclsel/tJ24I3FAY37dAU+meZCpYoX2b6uNAIEY9NEN4BxHUcnC8JM3vPc28Q7PVkk5143FyC/PFc9NcdvuTnDy+l27e28qSldup7VMm++raNVQYwWvq4OTjR0hzW0rWbK5ne10z584ax8zjhum/Xv+EyWMH0t7exbSJg6hvaJId9W0UFeZz960TKCzM02FDajnzxOHy3sfrdMqo/vz8tvP5x9Mfcv7M0XLtxSeoIowaXkNNRTF/f3EJF8+eIDt2N3LN146Xj1fu5KUlDQx3GghXDZE0YPw0RHNh90r0TxeDpPSgVtiNXm4cu61ZARMATr71+ZqdTe7Ohi7LcexsbkRAAwLbwtQt4731nXpAKzVId1JTXigf/P1bZvHT35U+5TkcN34QBTFH/vHrr8vyF26XcSOqjRvvFkKWzJo2hM5kmrNOHKk33v2MDu1fpXNu/QvlFUW8uGAZDz7xLsUFUXIiYR5+YiFTxvRlb32TLvxoDSvW7uClt5br1IlDWLV5N+8sWi+DBlXLrBNHEu9IsPDdlTR2JCkpzpWm5k76VJcQBAHrth/gmzf9VZOJtM4uqodRJ2U6RaO5SN065YFzNUg0K0b080R/OvzC3R90bNin2UyIpJ85Y3N7c/fnL6xsA4wf9LSgadbhrZuvr9VXIBjEc/nLPV+TiSN7YxmL2TOH87dn3qO2uliH9a+gojRfnvj9XHGMkeKKQh3Qu5QrfvB4cMONf9OOrrSGbMO6jftYu2U/1805QX5x20X85q9vM2RgtX6wYquu3VpP/z4Vcqitm8DzGTOsN4eaO+X8U8dTVpJHIu3xwdKNWlCYS2FxPi+/uYzSwhj3//gStu5ooKIkxnuLN2JHcrTYOsA5Q4ABMzEY2L0Sfn+60rlfsR1wNXjBPQE0svDUj+72mDHPFuaoJc+LLxe/dU1tZf6jq+8d5+VGnQyjDsGxlJZfnKKjXxrMwUSRP2lcuVn67O0m4/0t1m3YrqOPv5U/P3SzXH/VGVmAY3PRLX8J3npnjZb1KqXhUIcao0QjjoRsQ0tbF64fMHJgpRxsatPGlk7pVVFAQ3MnqCfjhvWh/lArXd0phvWvZMO2/YiBYQOqWb25Drfb02FDepFylT17D2llRaFYlkVze0KjYSPt3YrrxeShske56ae3SfrU27HWvqXBn6/ApFrUdxxCnqubk9WMb/5N4GEmuW9dvpZ584zFxrtgHmbupIGbPlrWdnan71SfM77Mdz0/UwU0gv/un3h8ax6HktVSPqBSBg3qI5vquth1KEFjwlDVf6D0HTyQg52+bqmPs68lJR+s2s/mdYe0PWmpTwgvsDWZELriSiCOIBE91BCnOyVg59DZ7otaIVEJ07Cvg3hKSPsO9XvbccUh7dns39tOYEUhlCNNB7ppbfdQO0pnW5r2TlXXd+juUhztlnuL/yW3feMMcS/6DebDvyqPXKXG7dIgZIu6iu1pcG33d5wN6X5Pydtz/qLz5hnuvjv4QhNi8Q0fTGlpSX/0+LeHW1fNqJFEIilWNEJo1Uusv/8WfWxfJR2ByTAEsv2yxhhy86Ka6E6Lm05lKVmSaT21rCws9w8DKZFMhwJGM9CtB3tqloSPHMZtKmDEiGabc+WoPl0RkUxhRxFj0EAIUIbkeFwwUBlw6bfEnXaDytO3Ie8+rEQzjdUuItHACx7sPNO5tfO6g4Ps3RO2zb9tP/PukiMCyTYxy/MX+6HLF9wgVuRPz9401DtvcqVJp9Ki4RDhxm2wb2kG0MjRCDNLvjfmy3j8Kzqu6WkfNUcBzC90bx8FR3tsmcgX8fhho38U8DeACZRoLTurTpJI43ateOxKdOfnKjFLfQ/UIGHjB8/Hp1iXd9wWWCRnpxfMXahHtfZ/qbNbnr/Ydy6d/0OxIr/87eX9uHl2Pxd8O+FbBNYxuy78Hz70qNNkSyQ9UHuHCysSqDb7TFk0j17v/gp8PwiiIdTzJSI+CP5Didmh2zqv9gJNf10XXPm0HrM5wlf2/svzF/vhqxZclez0Hjp/Wu+CeRfWBmMHFPkQGPAFTyVQ/coh9/SgyLFKcbh5Wg6HIF9u4z+iLnLUq573LJEje2H4cLBbWdli6WcdDibVxSk7nmHq4l9gHdqj5GRaDsl0yut6t8a5OzlXXuiauN+y4tcGb859S79ip4ivnuzsB6tvfW/I/l1d98Ty7AvPmFhrnzuuhEn9Y5QXOBoN2XrsFg2qKnJUyevo11kTgIho0HM9A+7132qEHmETi4h2pIW6bmVTG6xrUba0CxWhpJ7f+gYnr3yQyO7P6BbQUBTXEzlEgVkVDOIVdxqvJkakkn7RE71Yf/f+t+6s03+zbca/1/7Dnc4gVy+c5B3qvhTjnxrLC/cuz7cLQmH7MB8tE6gFmZkLjqrhHraCR9d1D7McjxjYnkZBOIJ9jtITkUzhqCOltLjg+mBMhiLaz+okdGgL7Z6NhmPZrTcCvMD4TUFeW5cW7YDoe0jHM9aCi9f5/2EPEfmPu8twF9wtgQV4qiIXv15LZ6qQbtfCNtJDRerJSX55mn1BgszGKGIpQdoglmauZ7/T81yzLPxj3z+6rur0VCazG7F0O1A+SiEN8Q7BySZEvbRHjttsvXb+/sM0ujnPWTw/J/iqfUP+vx3zNLtlzREpHn3+u+1u/v/YQkeOGcP/asudGR/Ymcn9z8f/A4zULa65BIhFAAAAAElFTkSuQmCC" alt="">TablMarkUNSS <small>Prof</small></button><nav class="nav" id="nav"></nav></header>
+<main id="app"></main>
+<div id="ov"></div><div id="toast" role="status" aria-live="polite"></div><div id="print"></div>
+<script>
+/* ===== TablMarkUNSS — noyau commun (élève + prof) ===== */
+const TMU_VERSION = '1.0';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const pad2 = n => String(n).padStart(2, '0');
+const fmtT = sec => { sec = Math.max(0, Math.round(sec)); return pad2(Math.floor(sec / 60)) + ':' + pad2(sec % 60); };
+const fmtDate = d => { if (!d) return ''; const [y, m, j] = d.split('-'); return j ? `${j}/${m}/${y}` : d; };
+
+const NIVEAUX = ['AS / Établissement', 'District', 'Départemental', 'Académique', 'Inter-académique', 'Championnat de France'];
+const CATS = ['Benjamins', 'Minimes', 'Cadets', 'Juniors', 'Lycées', 'Collèges', 'Sport partagé'];
+const SEXES = ['Filles', 'Garçons', 'Mixte'];
+const NIV_JO = ['', 'Établissement', 'District', 'Départemental', 'Académique', 'National', 'International'];
+const ROLES = {
+  co: [['arb1', 'Arbitre 1'], ['arb2', 'Arbitre 2'], ['sec', 'Secrétaire / marqueur'], ['chr', 'Chronométreur'], ['resp', 'Responsable de table']],
+  du: [['arb1', 'Juge-arbitre'], ['arb2', 'Arbitre'], ['sec', 'Marqueur'], ['resp', 'Responsable de table']]
+};
+
+/* acts : [clé, libellé, points, couleur] — couleur : y jaune, o orange, r rouge, f faute, s remplacement */
+const HAND_ACTS = [['but', 'But', 1], ['b7', 'But 7 m', 1], ['av', 'Avertissement', 0, 'y'], ['2m', '2 min', 0, 'o'], ['dq', 'Disqualif.', 0, 'r']];
+const SPORTS = {
+  handball: { nom: 'Handball', kind: 'co', periods: 2, pn: 'Mi-temps', dur: 20, ot: 5, maxJ: 14, tm: 3, acts: HAND_ACTS, max2m: 3 },
+  hand4: { nom: 'Hand à 4', kind: 'co', periods: 2, pn: 'Période', dur: 10, ot: 3, maxJ: 8, tm: 2, acts: HAND_ACTS, max2m: 3 },
+  futsal: { nom: 'Futsal', kind: 'co', periods: 2, pn: 'Mi-temps', dur: 20, ot: 5, maxJ: 12, tm: 2,
+    acts: [['but', 'But', 1], ['f', 'Faute', 0, 'f'], ['cj', 'Carton jaune', 0, 'y'], ['cr', 'Carton rouge', 0, 'r']],
+    teamFoul: { keys: ['f'], limit: 5, msg: '5 fautes cumulées : dès la 6e, coup franc direct sans mur.' } },
+  basket: { nom: 'Basketball', kind: 'co', periods: 4, pn: 'Quart-temps', dur: 10, ot: 5, maxJ: 12, tm: 5, running: true,
+    acts: [['p1', '1 pt', 1], ['p2', '2 pts', 2], ['p3', '3 pts', 3], ['f', 'Faute P', 0, 'f'], ['ft', 'Faute T', 0, 'y'], ['fu', 'Faute U', 0, 'o'], ['fd', 'Faute D', 0, 'r']],
+    persoKeys: ['f', 'ft', 'fu', 'fd'], persoMax: 5,
+    teamFoul: { keys: ['f', 'ft', 'fu', 'fd'], limit: 4, msg: '4 fautes d’équipe dans le quart-temps : lancers francs dès la 5e.' } },
+  b3x3: { nom: 'Basket 3×3', kind: 'co', periods: 1, pn: 'Période', dur: 10, ot: 0, maxJ: 4, tm: 1, running: true, target: 21,
+    acts: [['p1', '1 pt', 1], ['p2', '2 pts', 2], ['f', 'Faute', 0, 'f'], ['ft', 'Faute T', 0, 'y'], ['fu', 'Faute U', 0, 'o']],
+    teamFoul: { keys: ['f', 'ft', 'fu'], limit: 6, msg: '6 fautes d’équipe : 2 lancers francs dès la 7e.' }, cumulFoul: true },
+  football: { nom: 'Football', kind: 'co', periods: 2, pn: 'Mi-temps', dur: 30, ot: 10, maxJ: 16, tm: 0,
+    acts: [['but', 'But', 1], ['cj', 'Carton jaune', 0, 'y'], ['cr', 'Carton rouge', 0, 'r'], ['rp', 'Entrée (rempl.)', 0, 's']] },
+  badminton: { nom: 'Badminton', kind: 'du', pts: 21, max: 30, sets: 2, serve: 'bad',
+    formats: { 'Match simple': ['Simple'], 'Match double': ['Double'], 'Rencontre par équipes': ['Simple fille', 'Simple garçon', 'Double filles', 'Double garçons', 'Double mixte'] } },
+  tt: { nom: 'Tennis de table', kind: 'du', pts: 11, max: 0, sets: 3, serve: 'tt',
+    formats: { 'Match simple': ['Simple'], 'Match double': ['Double'], 'Rencontre par équipes': ['Simple 1', 'Simple 2', 'Double', 'Simple 3', 'Simple 4'] } }
+};
+const actOf = (s, k) => (SPORTS[s.sport].acts || []).find(a => a[0] === k) || [k, k === 'tm' ? 'Temps mort' : k, 0];
+const periodName = (s, p) => p <= s.cfg.periods ? `${SPORTS[s.sport].pn} ${p}` : `Prolong. ${p - s.cfg.periods}`;
+
+/* ---------- Collectif : calculs ---------- */
+function coScore(s, upto) {
+  const sc = { A: 0, B: 0 };
+  for (const e of s.events) { if (upto && e === upto) { sc[e.team] += e.pts || 0; break; } sc[e.team] += e.pts || 0; }
+  return sc;
+}
+function coRunning(s) { // score après chaque événement
+  const sc = { A: 0, B: 0 }; return s.events.map(e => { sc[e.team] += e.pts || 0; return { A: sc.A, B: sc.B }; });
+}
+function coPeriodScores(s) {
+  const n = Math.max(s.cfg.periods, s.period || 1, ...s.events.map(e => e.p));
+  const r = []; for (let p = 1; p <= n; p++) r.push({ p, A: 0, B: 0 });
+  for (const e of s.events) r[e.p - 1][e.team] += e.pts || 0;
+  return r;
+}
+function playerStats(s, team) {
+  const map = {};
+  for (const j of s.teams[team].players) map[j.n] = { j, pts: 0, c: {} };
+  for (const e of s.events) {
+    if (e.team !== team || e.n == null || e.n === '') continue;
+    const m = map[e.n] || (map[e.n] = { j: { n: e.n, nom: '?', prenom: '' }, pts: 0, c: {} });
+    m.pts += e.pts || 0; m.c[e.k] = (m.c[e.k] || 0) + 1;
+  }
+  return Object.values(map).sort((a, b) => (+a.j.n || 999) - (+b.j.n || 999));
+}
+function teamFouls(s, team, p) {
+  const tf = SPORTS[s.sport].teamFoul; if (!tf) return 0;
+  return s.events.filter(e => e.team === team && tf.keys.includes(e.k) && (SPORTS[s.sport].cumulFoul || e.p === p)).length;
+}
+function tmUsed(s, team) { return s.events.filter(e => e.team === team && e.k === 'tm').length; }
+function persoCount(s, team, n) {
+  const sp = SPORTS[s.sport]; if (!sp.persoKeys) return 0;
+  return s.events.filter(e => e.team === team && e.n == n && sp.persoKeys.includes(e.k)).length;
+}
+
+/* ---------- Duel : calculs à partir de l'historique des points ---------- */
+function setOver(a, b, c) { const m = Math.max(a, b); return (m >= c.pts && Math.abs(a - b) >= 2) || (c.max && m >= c.max); }
+function duelState(p, c, serveMode) {
+  const sets = []; let a = 0, b = 0, wa = 0, wb = 0, done = false;
+  const other = x => x === 'A' ? 'B' : 'A';
+  let setStart = p.first || 'A', srv = setStart;
+  for (const w of p.h) {
+    if (done) break;
+    w === 'A' ? a++ : b++;
+    if (serveMode === 'bad') srv = w;
+    if (setOver(a, b, c)) {
+      sets.push([a, b]); a > b ? wa++ : wb++; a = b = 0;
+      if (wa === c.sets || wb === c.sets) done = true;
+      setStart = serveMode === 'bad' ? w : other(setStart); srv = setStart;
+    } else if (serveMode === 'tt') {
+      const t = a + b; const idx = t < 20 ? Math.floor(t / 2) % 2 : t % 2;
+      srv = idx ? other(setStart) : setStart;
+    }
+  }
+  if (p.forfeit) { done = true; return { sets, cur: [a, b], wa, wb, done, winner: p.forfeit === 'A' ? 'B' : 'A', srv, forfeit: true }; }
+  return { sets, cur: [a, b], wa, wb, done, winner: done ? (wa > wb ? 'A' : 'B') : null, srv };
+}
+function duelTotals(s) {
+  const t = { A: 0, B: 0 }; const sp = SPORTS[s.sport];
+  for (const p of s.parties) { const st = duelState(p, s.cfg, sp.serve); if (st.winner) t[st.winner]++; }
+  return t;
+}
+
+/* ---------- Résultat ---------- */
+function result(s) {
+  const sp = SPORTS[s.sport];
+  const sc = sp.kind === 'co' ? coScore(s) : duelTotals(s);
+  let w = null; if (s.forfait) w = s.forfait === 'A' ? 'B' : 'A'; else if (sc.A > sc.B) w = 'A'; else if (sc.B > sc.A) w = 'B';
+  if (!s.forfait && s.tab && s.tab.A !== '' && s.tab.B !== '' && sc.A === sc.B) { if (+s.tab.A > +s.tab.B) w = 'A'; else if (+s.tab.B > +s.tab.A) w = 'B'; }
+  return { A: sc.A, B: sc.B, w };
+}
+const teamLabel = (s, t) => s.teams[t].nom || (t === 'A' ? 'Équipe A' : 'Équipe B');
+const STATUTS = { prep: 'En préparation', live: 'En cours', clos: 'Clôturée', valide: 'Validée prof' };
+
+/* ---------- Échange élève → prof ---------- */
+function toCode(obj) { const json = JSON.stringify(obj); return 'TMU1:' + btoa(unescape(encodeURIComponent(json))); }
+function fromCode(txt) {
+  txt = String(txt || '').trim();
+  if (txt.startsWith('{')) return JSON.parse(txt);
+  const m = txt.match(/TMU1:([A-Za-z0-9+/=\s]+)/); if (!m) throw new Error('Code non reconnu');
+  return JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/\s/g, '')))));
+}
+function fileName(s, ext) {
+  const clean = x => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24);
+  return `TablMark_${clean(SPORTS[s.sport].nom)}_${clean(teamLabel(s, 'A'))}-${clean(teamLabel(s, 'B'))}_${s.meta.date || ''}.${ext}`;
+}
+async function saveFile(name, data) {
+  try {
+    if (window.claude && claude.use) {
+      const d = await claude.use('downloads');
+      if (d) { await d.save({ filename: name, data }); return 'ok'; }
+    }
+  } catch (e) { if (e && e.code === 'declined') return 'declined'; }
+  try {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data])); a.download = name;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); return 'ok';
+  } catch (e) { return 'fail'; }
+}
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); return true; } catch (e) {
+    try { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e2) { return false; }
+  }
+}
+
+/* ---------- Rendu de la feuille officielle (impression / consultation prof) ---------- */
+function sheetHTML(s) {
+  const sp = SPORTS[s.sport], r = result(s), m = s.meta;
+  const winTxt = r.w ? esc(teamLabel(s, r.w)) : 'Match nul';
+  let h = `<div class="sheet"><header class="sh-h"><div><div class="sh-brand">TablMarkUNSS</div><h2>Feuille de ${sp.kind === 'co' ? 'match' : 'rencontre'} — ${esc(sp.nom)}</h2></div>
+  <div class="sh-st">${esc(STATUTS[s.status] || '')}</div></header>
+  <table class="sh-meta"><tr><th>Compétition</th><td>${esc(m.comp)}</td><th>Niveau</th><td>${esc(m.niveau)}</td></tr>
+  <tr><th>Date</th><td>${esc(fmtDate(m.date))} ${esc(m.heure)}</td><th>Lieu</th><td>${esc(m.lieu)}</td></tr>
+  <tr><th>Catégorie</th><td>${esc(m.cat)} ${esc(m.sexe)}</td><th>N° match / poule</th><td>${esc(m.num)} ${m.poule ? '· ' + esc(m.poule) : ''}</td></tr></table>
+  <div class="sh-score"><div><b>A</b> ${esc(teamLabel(s, 'A'))}<small>${esc(s.teams.A.as)}</small></div><div class="sh-big">${r.A} – ${r.B}</div><div><b>B</b> ${esc(teamLabel(s, 'B'))}<small>${esc(s.teams.B.as)}</small></div></div>
+  <p class="sh-win">Vainqueur : <b>${winTxt}</b>${s.forfait ? ` (forfait ${esc(teamLabel(s, s.forfait))})` : ''}${s.tab && s.tab.A !== '' && s.tab.A != null ? ` · Départage : ${esc(s.tab.A)} – ${esc(s.tab.B)}` : ''}</p>`;
+  if (sp.kind === 'co') {
+    const ps = coPeriodScores(s);
+    h += `<table class="sh-t"><tr><th>Période</th>${ps.map(p => `<th>${esc(periodName(s, p.p))}</th>`).join('')}<th>Total</th></tr>
+    <tr><td>${esc(teamLabel(s, 'A'))}</td>${ps.map(p => `<td>${p.A}</td>`).join('')}<td><b>${r.A}</b></td></tr>
+    <tr><td>${esc(teamLabel(s, 'B'))}</td>${ps.map(p => `<td>${p.B}</td>`).join('')}<td><b>${r.B}</b></td></tr></table>`;
+    const cols = sp.acts.filter(a => !a[2]);
+    for (const t of ['A', 'B']) {
+      const st = playerStats(s, t), T = s.teams[t];
+      h += `<h3>Équipe ${t} — ${esc(teamLabel(s, t))}</h3><p class="sh-small">Responsable : ${esc(T.prof)} · Temps morts : ${tmUsed(s, t)}</p>
+      <table class="sh-t"><tr><th>N°</th><th>Nom Prénom</th><th>Licence</th><th>${sp.acts.some(a => a[2] > 1) ? 'Pts' : 'Buts'}</th>${cols.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr>
+      ${st.map(x => `<tr><td>${esc(x.j.n)}${x.j.cap ? ' (C)' : ''}${x.j.gb ? ' GB' : ''}</td><td class="l">${esc(x.j.nom)} ${esc(x.j.prenom)}</td><td>${esc(x.j.lic)}</td><td>${x.pts || ''}</td>${cols.map(c => `<td>${x.c[c[0]] || ''}</td>`).join('')}</tr>`).join('')}</table>`;
+    }
+    const run = coRunning(s);
+    h += `<h3>Déroulé du match</h3><table class="sh-t sh-log"><tr><th>Période</th><th>Temps</th><th>Équipe</th><th>N°</th><th>Action</th><th>Score</th></tr>
+    ${s.events.map((e, i) => `<tr><td>${esc(periodName(s, e.p))}</td><td>${esc(e.t)}</td><td>${e.team}</td><td>${esc(e.n ?? '')}</td><td class="l">${esc(actOf(s, e.k)[1])}</td><td>${run[i].A}–${run[i].B}</td></tr>`).join('') || '<tr><td colspan="6">Aucun événement</td></tr>'}</table>`;
+  } else {
+    h += `<p class="sh-small">Format : sets de ${s.cfg.pts} points${s.cfg.max ? ` (plafond ${s.cfg.max})` : ''}, ${s.cfg.sets} sets gagnants.</p>
+    <table class="sh-t"><tr><th>Partie</th><th>${esc(teamLabel(s, 'A'))}</th><th>${esc(teamLabel(s, 'B'))}</th><th>Sets</th><th>Vainqueur</th></tr>
+    ${s.parties.map(p => { const st = duelState(p, s.cfg, sp.serve); return `<tr><td class="l">${esc(p.lab)}</td><td class="l">${esc(p.a)}</td><td class="l">${esc(p.b)}</td><td>${st.sets.map(x => x[0] + '-' + x[1]).join(' · ')}${!st.done && (st.cur[0] || st.cur[1]) ? ` · (${st.cur[0]}-${st.cur[1]})` : ''}${st.forfeit ? ' forfait' : ''}</td><td>${st.winner ? esc(st.winner === 'A' ? p.a || 'A' : p.b || 'B') : '—'}</td></tr>`; }).join('')}</table>`;
+    for (const t of ['A', 'B']) h += `<p class="sh-small"><b>${esc(teamLabel(s, t))}</b> — responsable : ${esc(s.teams[t].prof)}</p>`;
+  }
+  const roles = ROLES[sp.kind];
+  h += `<h3>Jeunes officiels</h3><table class="sh-t"><tr><th>Fonction</th><th>Nom Prénom</th><th>Établissement</th><th>Niveau JO</th></tr>
+  ${roles.map(([k, l]) => { const o = s.officiels[k] || {}; return o.nom ? `<tr><td class="l">${l}</td><td class="l">${esc(o.nom)}</td><td>${esc(o.etab)}</td><td>${esc(o.niv)}</td></tr>` : ''; }).join('')}</table>
+  <h3>Observations, réserves, incidents</h3><p class="sh-obs">${esc(s.obs || 'Néant').replace(/\n/g, '<br>')}</p>
+  ${s.profNote ? `<h3>Note de l’enseignant</h3><p class="sh-obs">${esc(s.profNote)}</p>` : ''}
+  <h3>Signatures</h3><div class="sh-sig">${SIGS.map(([k, l]) => `<div><span>${esc(l(s))}</span>${s.sig && s.sig[k] && /^data:image\/png;base64,/.test(s.sig[k]) ? `<img alt="" src="${s.sig[k]}">` : '<i></i>'}</div>`).join('')}</div>
+  <footer class="sh-f">Feuille n° ${esc(s.id)} · saisie TablMarkUNSS ${TMU_VERSION} · ${s.closedAt ? 'clôturée le ' + esc(new Date(s.closedAt).toLocaleString('fr-FR')) : 'non clôturée'}</footer></div>`;
+  return h;
+}
+const SIGS = [['arb', () => 'Arbitre / juge-arbitre'], ['capA', s => 'Capitaine ' + teamLabel(s, 'A')], ['capB', s => 'Capitaine ' + teamLabel(s, 'B')], ['table', () => 'Table de marque']];
+const SHEET_CSS = `.sheet{background:#fff;color:#111;font:13px/1.4 Barlow,Arial,sans-serif;padding:18px;max-width:900px;margin:auto}
+.sh-h{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:10px}
+.sh-brand{font:700 13px 'Barlow Condensed',Arial;letter-spacing:.02em;color:#c8102e}.sheet h2{margin:0;font:700 24px/1.1 'Barlow Condensed',Arial}
+.sheet h3{font:700 16px 'Barlow Condensed',Arial;margin:16px 0 6px;border-bottom:1px solid #999}
+.sh-st{border:1.5px solid #111;padding:2px 8px;font-weight:700;font-size:12px}
+.sh-t,.sh-meta{width:100%;border-collapse:collapse;margin:6px 0}.sh-t th,.sh-t td,.sh-meta th,.sh-meta td{border:1px solid #888;padding:3px 6px;text-align:center}
+.sh-meta th{background:#eee;text-align:left;width:16%}.sh-meta td{text-align:left}.sh-t th{background:#eee}.sh-t td.l{text-align:left}
+.sh-score{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin:10px 0;border:2px solid #111;padding:8px}
+.sh-score small{display:block;color:#555}.sh-score>div:last-child{text-align:right}.sh-big{font:700 40px 'Barlow Condensed',Arial}
+.sh-win{margin:4px 0}.sh-small{margin:4px 0;font-size:12px;color:#333}.sh-obs{border:1px solid #888;padding:6px;min-height:36px}
+.sh-sig{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.sh-sig div{border:1px solid #888;padding:4px;min-height:80px}
+.sh-sig span{font-size:11px;display:block}.sh-sig img{width:100%;height:56px;object-fit:contain}.sh-f{margin-top:14px;font-size:11px;color:#555}
+@media(max-width:600px){.sh-sig{grid-template-columns:1fr 1fr}.sh-big{font-size:30px}.sh-t{font-size:12px}}
+@media print{body *{visibility:hidden}#print,#print *{visibility:visible}#print{position:absolute;inset:0}.sheet{padding:0}}`;
+function standaloneSheet(s) {
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Feuille ${esc(SPORTS[s.sport].nom)}</title><style>body{margin:0;background:#fff}${SHEET_CSS}</style></head><body><div id="print">${sheetHTML(s)}</div><script>setTimeout(()=>{try{print()}catch(e){}},400)<\/script><script>if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))</script>
+</body></html>`;
+}
+function validSheet(o) {
+  return o && typeof o === 'object' && typeof o.id === 'string' && SPORTS[o.sport] && o.teams && o.teams.A && o.teams.B && o.meta && (Array.isArray(o.events) || Array.isArray(o.parties));
+}
+function store(key, val) { try { if (val === undefined) return JSON.parse(localStorage.getItem(key) || 'null'); localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return val === undefined ? null : false; } }
+
+{
+const $ = q => document.querySelector(q);
+const KEY = 'tmu_prof';
+let DB = store(KEY) || { sheets: {}, pts: { V: 3, N: 2, D: 1, F: 0 } };
+let storageOK = store(KEY, DB);
+let view = 'list', curId = null, F = { q: '', sport: '', cat: '', st: '' };
+const save = () => { storageOK = store(KEY, DB); };
+let tT; function toast(m, warn) { const t = $('#toast'); t.textContent = m; t.className = warn ? 'warn' : ''; t.style.display = 'block'; clearTimeout(tT); tT = setTimeout(() => t.style.display = 'none', 4200); }
+const ov = h => { $('#ov').innerHTML = h ? `<div class="ov" data-act="ovbg"><div class="dlg" role="dialog" aria-modal="true">${h}</div></div>` : ''; };
+let pending = null; function ask(msg, ok, fn) { pending = fn; ov(`<h3>${esc(msg)}</h3><div class="row" style="justify-content:flex-end;margin-top:14px"><button data-act="close">Annuler</button><button class="btn-p" data-act="confirm">${esc(ok)}</button></div>`); }
+const all = () => Object.values(DB.sheets).sort((a, b) => (b.meta.date || '').localeCompare(a.meta.date || '') || (b.meta.heure || '').localeCompare(a.meta.heure || ''));
+
+function importObj(o, rep) {
+  if (Array.isArray(o)) return o.forEach(x => importObj(x, rep));
+  if (o && Array.isArray(o.sheets)) return o.sheets.forEach(x => importObj(x, rep));
+  if (!validSheet(o)) { rep.bad++; return; }
+  const ex = DB.sheets[o.id];
+  delete o.exportedAt;
+  if (ex) { if ((o.updated || 0) <= (ex.updated || 0)) { rep.same++; return; } o.profNote = ex.profNote; if (ex.status === 'valide' && o.status === 'clos') o.status = 'clos'; rep.upd++; }
+  else rep.add++;
+  o.receivedAt = Date.now(); DB.sheets[o.id] = o;
+}
+function report(rep) { save(); render(); const m = [`${rep.add} feuille(s) ajoutée(s)`]; if (rep.upd) m.push(`${rep.upd} mise(s) à jour`); if (rep.same) m.push(`${rep.same} déjà reçue(s)`); if (rep.bad) m.push(`${rep.bad} illisible(s)`); toast(m.join(' · '), rep.bad > 0); }
+async function importFiles(files) {
+  const rep = { add: 0, upd: 0, same: 0, bad: 0 };
+  for (const f of files) { try { importObj(fromCode(await f.text()), rep); } catch (e) { rep.bad++; } }
+  report(rep);
+}
+
+function nav() {
+  const it = [['list', 'Feuilles reçues'], ['std', 'Classements'], ['jo', 'Jeunes officiels']];
+  $('#nav').innerHTML = it.map(([k, l]) => `<button data-act="go" data-v="${k}" class="${view === k || (view === 'detail' && k === 'list') ? 'on' : ''}">${l}</button>`).join('');
+}
+function render() {
+  nav(); const warn = storageOK ? '' : `<div class="storage" style="background:var(--o);color:#111;padding:8px 12px;border-radius:10px;font-weight:600;margin-bottom:12px">Stockage local indisponible : exporte une sauvegarde avant de fermer la page.</div>`;
+  $('#app').innerHTML = warn + ({ list: vList, detail: vDetail, std: vStd, jo: vJo }[view] || vList)();
+}
+function filtered() {
+  const q = F.q.toLowerCase();
+  return all().filter(s => (!F.sport || s.sport === F.sport) && (!F.cat || s.meta.cat === F.cat) && (!F.st || s.status === F.st) &&
+    (!q || [s.meta.comp, s.meta.lieu, s.meta.poule, s.teams.A.nom, s.teams.B.nom, s.teams.A.as, s.teams.B.as].join(' ').toLowerCase().includes(q)));
+}
+function vList() {
+  const A = all(), L = filtered();
+  const k = { n: A.length, todo: A.filter(s => s.status !== 'valide').length, ok: A.filter(s => s.status === 'valide').length, sp: new Set(A.map(s => s.sport)).size };
+  const opt = (arr, v) => arr.map(([val, lab]) => `<option value="${esc(val)}" ${v === val ? 'selected' : ''}>${esc(lab)}</option>`).join('');
+  return `<h1>Feuilles de match reçues</h1><p class="lead">Importe les fichiers envoyés par les tables de marque élèves (TablMarkUNSS Élève), vérifie, valide, imprime et publie les classements.</p>
+  <div class="drop" id="drop"><label class="file">Importer des feuilles<br><span style="font:400 14px Barlow,Arial">fichiers .json — plusieurs à la fois, ou glisser-déposer</span><input type="file" id="files" accept=".json,application/json,text/plain" multiple></label>
+  <div><label class="f"><span>…ou coller un ou plusieurs codes TMU1 reçus par message</span><textarea id="codes" placeholder="TMU1:eyJpZCI6..."></textarea></label><div class="row" style="justify-content:flex-end;margin-top:6px"><button class="btn-p" data-act="paste">Importer les codes</button></div></div></div>
+  <div class="kpis"><div class="kpi"><b>${k.n}</b><span>feuilles reçues</span></div><div class="kpi"><b>${k.todo}</b><span>à valider</span></div><div class="kpi"><b>${k.ok}</b><span>validées</span></div><div class="kpi"><b>${k.sp}</b><span>activités</span></div></div>
+  <div class="filters"><input id="fq" placeholder="Rechercher : équipe, compétition, lieu…" value="${esc(F.q)}" aria-label="Rechercher">
+  <select data-f="sport" aria-label="Activité"><option value="">Toutes activités</option>${opt(Object.entries(SPORTS).map(([a, b]) => [a, b.nom]), F.sport)}</select>
+  <select data-f="cat" aria-label="Catégorie"><option value="">Toutes catégories</option>${opt(CATS.map(c => [c, c]), F.cat)}</select>
+  <select data-f="st" aria-label="Statut"><option value="">Tous statuts</option>${opt(Object.entries(STATUTS), F.st)}</select></div>
+  ${L.length ? `<div class="card" style="padding:6px 10px"><table class="list stack"><thead><tr><th>Date</th><th>Activité</th><th>Compétition</th><th>Équipe A</th><th>Score</th><th>Équipe B</th><th>Statut</th></tr></thead><tbody>
+  ${L.map(s => { const r = result(s); return `<tr class="click" data-act="open" data-id="${esc(s.id)}"><td>${esc(fmtDate(s.meta.date))}</td><td><b>${esc(SPORTS[s.sport].nom)}</b><br><span class="small muted">${esc(s.meta.cat)} ${esc(s.meta.sexe)}</span></td><td>${esc(s.meta.comp)}${s.meta.poule ? ' · ' + esc(s.meta.poule) : ''}</td><td>${r.w === 'A' ? '<b>' : ''}${esc(teamLabel(s, 'A'))}${r.w === 'A' ? '</b>' : ''}</td><td class="sc">${r.A} – ${r.B}</td><td>${r.w === 'B' ? '<b>' : ''}${esc(teamLabel(s, 'B'))}${r.w === 'B' ? '</b>' : ''}</td><td><span class="tag ${esc(s.status)}">${esc(STATUTS[s.status] || s.status)}</span></td></tr>`; }).join('')}</tbody></table></div>` : `<div class="empty">${A.length ? 'Aucune feuille ne correspond aux filtres.' : 'Aucune feuille reçue pour l’instant. Importe le premier fichier envoyé par une table de marque.'}</div>`}
+  <div class="card" style="margin-top:14px"><h3>Exports et sauvegarde</h3><div class="row"><button data-act="csv" ${L.length ? '' : 'disabled'}>Résultats filtrés (.csv)</button><button data-act="backup" ${A.length ? '' : 'disabled'}>Sauvegarde complète (.json)</button><label class="f" style="display:inline-grid"><button data-act="restore">Restaurer une sauvegarde</button></label><button data-act="demo">Charger un exemple</button><button class="btn-d" data-act="wipe" ${A.length ? '' : 'disabled'}>Tout effacer</button></div>
+  <p class="small muted">Les feuilles sont stockées dans ce navigateur. Fais une sauvegarde régulière, surtout avant de changer d’ordinateur.</p></div>`;
+}
+function vDetail() {
+  const s = DB.sheets[curId]; if (!s) { view = 'list'; return vList(); }
+  return `<div class="row" style="justify-content:space-between;margin-bottom:10px"><button data-act="go" data-v="list">← Retour</button><div class="row">
+  ${s.status === 'valide' ? `<button data-act="unval">Retirer la validation</button>` : `<button class="btn-p" data-act="val">Valider la feuille</button>`}<button data-act="print">Imprimer</button><button data-act="dlhtml">Télécharger (.html)</button><button class="btn-d" data-act="del">Supprimer</button></div></div>
+  <div class="card"><label class="f"><span>Note de l’enseignant (correction, décision, réserve traitée)</span><textarea id="note" style="min-height:60px">${esc(s.profNote || '')}</textarea></label><div class="row" style="justify-content:flex-end;margin-top:6px"><button data-act="note">Enregistrer la note</button></div></div>
+  <div style="border-radius:12px;overflow:hidden">${sheetHTML(s)}</div>`;
+}
+function standings() {
+  const P = DB.pts, groups = {};
+  for (const s of all()) {
+    if (!['clos', 'valide'].includes(s.status)) continue;
+    const g = [SPORTS[s.sport].nom, s.meta.comp, s.meta.cat, s.meta.sexe, s.meta.poule].filter(Boolean).join(' · ');
+    const G = groups[g] || (groups[g] = { teams: {}, n: 0, du: SPORTS[s.sport].kind === 'du' }); G.n++;
+    const r = result(s);
+    for (const t of ['A', 'B']) {
+      const o = t === 'A' ? 'B' : 'A', nm = teamLabel(s, t);
+      const T = G.teams[nm] || (G.teams[nm] = { nm, J: 0, V: 0, N: 0, D: 0, F: 0, p: 0, c: 0, pts: 0 });
+      T.J++; T.p += r[t]; T.c += r[o];
+      if (s.forfait === t) { T.F++; T.pts += +P.F; } else if (r.w === t) { T.V++; T.pts += +P.V; } else if (!r.w) { T.N++; T.pts += +P.N; } else { T.D++; T.pts += +P.D; }
+    }
+  }
+  return Object.entries(groups).map(([g, G]) => ({ g, n: G.n, du: G.du, rows: Object.values(G.teams).sort((a, b) => b.pts - a.pts || (b.p - b.c) - (a.p - a.c) || b.p - a.p) }));
+}
+function vStd() {
+  const st = standings(), P = DB.pts;
+  return `<h1>Classements</h1><p class="lead">Calculés à partir des feuilles clôturées ou validées, regroupés par activité, compétition, catégorie, sexe et poule. En cas d’égalité : différence, puis total marqué. Vérifie le règlement de la compétition pour le départage officiel.</p>
+  <div class="card"><h3>Barème</h3><div class="pts-cfg">${[['V', 'Victoire'], ['N', 'Nul'], ['D', 'Défaite'], ['F', 'Forfait']].map(([k, l]) => `<label class="f"><span>${l}</span><input type="number" data-pts="${k}" value="${esc(P[k])}"></label>`).join('')}</div></div>
+  ${st.length ? st.map(G => `<div class="card scroll"><h3>${esc(G.g)} <span class="small muted">· ${G.n} match(s)</span></h3><table class="list std"><thead><tr><th>Équipe</th><th>Pts</th><th>J</th><th>V</th><th>N</th><th>D</th><th>F</th><th>${G.du ? 'Parties +' : 'Pour'}</th><th>${G.du ? 'Parties −' : 'Contre'}</th><th>Diff.</th></tr></thead><tbody>
+  ${G.rows.map((t, i) => `<tr><td><b>${i + 1}.</b> ${esc(t.nm)}</td><td class="pts">${t.pts}</td><td>${t.J}</td><td>${t.V}</td><td>${t.N}</td><td>${t.D}</td><td>${t.F}</td><td>${t.p}</td><td>${t.c}</td><td>${t.p - t.c > 0 ? '+' : ''}${t.p - t.c}</td></tr>`).join('')}</tbody></table></div>`).join('') : `<div class="empty">Aucune feuille clôturée pour l’instant.</div>`}`;
+}
+function vJo() {
+  const m = {};
+  for (const s of all()) for (const [k, l] of ROLES[SPORTS[s.sport].kind]) { const o = s.officiels && s.officiels[k]; if (!o || !o.nom) continue;
+    const key = (o.nom + '|' + (o.etab || '')).toLowerCase(); const x = m[key] || (m[key] = { nom: o.nom, etab: o.etab || '', niv: o.niv || '', roles: {}, sports: new Set(), n: 0 });
+    x.n++; x.roles[l] = (x.roles[l] || 0) + 1; x.sports.add(SPORTS[s.sport].nom); if (o.niv) x.niv = o.niv; }
+  const L = Object.values(m).sort((a, b) => b.n - a.n || a.nom.localeCompare(b.nom));
+  return `<h1>Jeunes officiels</h1><p class="lead">Fonctions tenues par chaque élève d’après les feuilles reçues : un appui pour le suivi et la certification des jeunes officiels.</p>
+  ${L.length ? `<div class="card" style="padding:6px 10px"><table class="list stack"><thead><tr><th>Jeune officiel</th><th>Établissement</th><th>Niveau</th><th>Matchs</th><th>Fonctions</th><th>Activités</th></tr></thead><tbody>
+  ${L.map(x => `<tr><td><b>${esc(x.nom)}</b></td><td>${esc(x.etab)}</td><td>${esc(x.niv)}</td><td class="num">${x.n}</td><td>${Object.entries(x.roles).map(([r, n]) => `${esc(r)} ×${n}`).join(', ')}</td><td>${esc([...x.sports].join(', '))}</td></tr>`).join('')}</tbody></table></div>
+  <div class="row" style="margin-top:10px"><button data-act="jocsv">Exporter (.csv)</button></div>` : `<div class="empty">Aucun jeune officiel renseigné dans les feuilles reçues.</div>`}`;
+}
+const csvCell = v => { v = String(v ?? ''); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+const csv = rows => '﻿' + rows.map(r => r.map(csvCell).join(';')).join('\r\n');
+function resultsCSV(L) {
+  const H = ['Date', 'Heure', 'Compétition', 'Niveau', 'Activité', 'Catégorie', 'Sexe', 'Poule', 'N° match', 'Équipe A', 'AS A', 'Score A', 'Score B', 'Équipe B', 'AS B', 'Vainqueur', 'Forfait', 'Statut', 'Arbitre 1', 'Arbitre 2', 'Secrétaire', 'Chronométreur', 'Responsable table', 'Observations', 'Note prof', 'Id'];
+  return csv([H, ...L.map(s => { const r = result(s), o = k => (s.officiels[k] || {}).nom || ''; return [fmtDate(s.meta.date), s.meta.heure, s.meta.comp, s.meta.niveau, SPORTS[s.sport].nom, s.meta.cat, s.meta.sexe, s.meta.poule, s.meta.num, teamLabel(s, 'A'), s.teams.A.as, r.A, r.B, teamLabel(s, 'B'), s.teams.B.as, r.w ? teamLabel(s, r.w) : 'Nul', s.forfait ? teamLabel(s, s.forfait) : '', STATUTS[s.status] || s.status, o('arb1'), o('arb2'), o('sec'), o('chr'), o('resp'), s.obs, s.profNote, s.id]; })]);
+}
+function demo() {
+  const mk = (sport, A, B, ev, extra = {}) => ({ id: 'demo-' + sport + '-' + (A + B).replace(/\W/g, '').slice(-14), v: 1, sport, status: 'clos', created: Date.now(), updated: 1, closedAt: Date.now(),
+    meta: { comp: 'Championnat district', niveau: 'District', date: '2026-11-25', heure: '14:00', lieu: 'Gymnase Jean-Moulin', cat: 'Minimes', sexe: 'Mixte', num: '', poule: 'Poule A' },
+    teams: { A: { nom: A, as: 'AS ' + A, prof: 'M. Leroy', players: [{ n: '7', nom: 'MARTIN', prenom: 'Léa', lic: '', cap: true }, { n: '10', nom: 'DIALLO', prenom: 'Sami', lic: '' }] }, B: { nom: B, as: 'AS ' + B, prof: 'Mme Petit', players: [{ n: '4', nom: 'NGUYEN', prenom: 'Tom', lic: '', cap: true }, { n: '9', nom: 'ROUX', prenom: 'Inès', lic: '' }] } },
+    officiels: { arb1: { nom: 'Camille BERNARD', etab: 'Collège Jean-Moulin', niv: 'District' }, sec: { nom: 'Yanis MOREAU', etab: 'Collège Jean-Moulin', niv: 'Établissement' }, chr: { nom: 'Emma GIRARD', etab: 'Collège Pasteur', niv: 'Établissement' } },
+    cfg: { periods: 2, dur: 20, ot: 5, tm: 3 }, events: ev, period: 2, clock: { rem: 0, run: false, at: 0 }, parties: [], obs: '', sig: {}, tab: { A: '', B: '' }, forfait: '', ...extra });
+  const E = (p, t, team, n, k, pts = 0) => ({ id: uid(), p, t, team, n, k, pts });
+  const rep = { add: 0, upd: 0, same: 0, bad: 0 };
+  [mk('handball', 'Collège Jean-Moulin', 'Collège Pasteur', [E(1, '02:10', 'A', '7', 'but', 1), E(1, '05:44', 'B', '4', 'but', 1), E(1, '09:02', 'A', '10', 'but', 1), E(1, '12:30', 'B', '9', '2m'), E(2, '03:15', 'A', '7', 'b7', 1), E(2, '11:40', 'B', '4', 'but', 1), E(2, '18:05', 'A', '10', 'but', 1)]),
+   mk('handball', 'Collège Pasteur', 'Collège Curie', [E(1, '04:00', 'A', '4', 'but', 1), E(2, '06:20', 'B', '7', 'but', 1)]),
+   mk('handball', 'Collège Curie', 'Collège Jean-Moulin', [E(1, '03:00', 'B', '7', 'but', 1), E(2, '15:00', 'B', '10', 'but', 1), E(2, '16:30', 'A', '4', 'but', 1)])
+  ].forEach(s => importObj(s, rep));
+  report(rep);
+}
+document.addEventListener('input', e => {
+  if (e.target.id === 'fq') { F.q = e.target.value; const p = e.target.selectionStart; render(); const i = $('#fq'); i.focus(); i.setSelectionRange(p, p); }
+  if (e.target.dataset.f) { F[e.target.dataset.f] = e.target.value; render(); }
+  if (e.target.dataset.pts) { DB.pts[e.target.dataset.pts] = +e.target.value || 0; save(); const k = e.target.dataset.pts; render(); const i = document.querySelector(`[data-pts="${k}"]`); i && i.focus(); }
+});
+document.addEventListener('change', e => { if (e.target.id === 'files' || e.target.id === 'restorefile') importFiles(e.target.files); });
+document.addEventListener('dragover', e => { const d = e.target.closest && e.target.closest('#drop'); if (d) { e.preventDefault(); d.classList.add('over'); } });
+document.addEventListener('dragleave', e => { const d = e.target.closest && e.target.closest('#drop'); if (d) d.classList.remove('over'); });
+document.addEventListener('drop', e => { const d = e.target.closest && e.target.closest('#drop'); if (d) { e.preventDefault(); importFiles(e.dataTransfer.files); } });
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act]'); if (!el) return; const a = el.dataset.act, d = el.dataset, s = DB.sheets[curId];
+  if (a === 'ovbg') { if (e.target === el) ov(''); return; }
+  switch (a) {
+    case 'go': view = d.v; render(); scrollTo(0, 0); break;
+    case 'open': curId = d.id; view = 'detail'; render(); scrollTo(0, 0); break;
+    case 'close': ov(''); break;
+    case 'confirm': { const f = pending; pending = null; ov(''); f && f(); } break;
+    case 'paste': { const t = $('#codes').value; const parts = t.match(/TMU1:[A-Za-z0-9+/=]+/g) || (t.trim().startsWith('{') || t.trim().startsWith('[') ? [t] : []); const rep = { add: 0, upd: 0, same: 0, bad: 0 };
+      if (!parts.length) return toast('Aucun code TMU1 reconnu.', true); for (const p of parts) { try { importObj(fromCode(p), rep); } catch (x) { rep.bad++; } } report(rep); } break;
+    case 'val': s.profNote = $('#note').value; s.status = 'valide'; s.validatedAt = Date.now(); save(); render(); toast('Feuille validée.'); break;
+    case 'unval': s.status = 'clos'; save(); render(); break;
+    case 'note': s.profNote = $('#note').value; save(); toast('Note enregistrée.'); break;
+    case 'del': ask('Supprimer cette feuille ?', 'Supprimer', () => { delete DB.sheets[curId]; save(); view = 'list'; render(); }); break;
+    case 'print': $('#print').innerHTML = sheetHTML(s); try { window.print(); } catch (x) { toast('Impression indisponible ici : utilise Télécharger (.html).', true); } break;
+    case 'dlhtml': { const r = await saveFile(fileName(s, 'html'), standaloneSheet(s)); if (r !== 'ok') toast('Téléchargement impossible ici.', true); } break;
+    case 'csv': { const r = await saveFile(`TablMark_resultats_${new Date().toISOString().slice(0, 10)}.csv`, resultsCSV(filtered())); if (r !== 'ok') toast('Téléchargement impossible ici.', true); } break;
+    case 'backup': { const r = await saveFile(`TablMark_sauvegarde_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ app: 'TablMarkUNSS-prof', at: Date.now(), sheets: Object.values(DB.sheets) })); if (r !== 'ok') toast('Téléchargement impossible ici.', true); } break;
+    case 'restore': ov(`<h3>Restaurer une sauvegarde</h3><p class="small muted">Les feuilles de la sauvegarde s’ajoutent à celles déjà présentes.</p><input type="file" id="restorefile" accept=".json"><div class="row" style="justify-content:flex-end;margin-top:10px"><button data-act="close">Fermer</button></div>`); break;
+    case 'jocsv': { const rows = [['Jeune officiel', 'Établissement', 'Niveau', 'Matchs', 'Fonctions', 'Activités']]; for (const tr of document.querySelectorAll('tbody tr')) rows.push([...tr.cells].map(c => c.textContent)); const r = await saveFile('TablMark_jeunes_officiels.csv', csv(rows)); if (r !== 'ok') toast('Téléchargement impossible ici.', true); } break;
+    case 'demo': demo(); break;
+    case 'wipe': ask('Effacer toutes les feuilles de ce navigateur ? Pense à faire une sauvegarde avant.', 'Tout effacer', () => { DB.sheets = {}; save(); render(); }); break;
+  }
+});
+document.addEventListener('change', e => { if (e.target.id === 'restorefile') ov(''); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') ov(''); });
+render();
+}
+</script>
+</body>
+</html>
