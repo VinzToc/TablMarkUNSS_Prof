@@ -119,6 +119,8 @@ table.list tr.click{cursor:pointer}table.list tr.click:hover td{background:rgba(
 .std td.pts{font:700 20px var(--cond)}
 .ins{list-style:none;margin:0;padding:0;max-height:220px;overflow:auto;display:grid;gap:4px}.ins li{padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.2)}
 .plx{display:grid;gap:6px;margin:6px 0 4px}.px{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) 44px 44px;gap:6px;align-items:center}.px input{min-height:40px;padding:6px 10px}.px button{padding:0;min-height:40px}.pobs{grid-column:1/-1;margin:-3px 0 2px 4px;font-size:12px;color:var(--c3)}
+.prole{border:0;padding:0;margin:12px 0 0;display:flex;gap:16px;flex-wrap:wrap;align-items:center}.prole label{display:flex;gap:6px;align-items:center;font-weight:600}.prole input{width:20px;min-height:20px;accent-color:var(--c1)}
+.coachf{margin-top:8px;display:none}.dlg:has(input[value=coach]:checked) .coachf{display:grid}
 .cands{display:flex;flex-wrap:wrap;gap:6px}.cands button{min-height:40px;font-weight:600}.cands small{color:var(--mute);margin-left:6px;font-weight:400}
 @media(max-width:600px){.px{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px 44px}.px>:nth-child(1){grid-area:1/1}.px>:nth-child(2){grid-area:1/2}.px>:nth-child(3){grid-area:2/1/3/3}.px>:nth-child(4){grid-area:1/3}.px>:nth-child(5){grid-area:1/4}.px>.pobs{grid-area:3/1/4/-1}}
 .plist{display:flex;flex-wrap:wrap;gap:5px;margin:4px 0 12px}.plist span{background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:13px}.plist i{font-style:normal;color:var(--mute);margin-left:6px;font-size:11px}
@@ -506,18 +508,42 @@ const joLabel = j => `${j.nom} ${j.prenom} — ${j.role || 'JO'}${j.niv ? ' · '
 const clonePl = L => L.map(j => ({ nom: j.nom, prenom: j.prenom, lic: j.lic, cat: j.cat || '' }));
 const samePl = (a, b) => (a.lic && b.lic && String(a.lic) === String(b.lic)) || (normKey(a.nom) === normKey(b.nom) && normKey(a.prenom) === normKey(b.prenom));
 let CANDS = [];
+const plKey = j => j.lic ? String(j.lic) : normKey(j.nom) + '|' + normKey(j.prenom);
+function coachOpts(d, t, joOpts) {
+  const o = [...joOpts], m = (d.manual || {})[COACH[t]];
+  if (m) o.splice(1, 0, ['man:' + COACH[t], `${m.nom} ${m.prenom} — ajouté comme jeune coach${m.manual ? ' (non inscrit OPUSS)' : ''}`]);
+  for (const j of d.pl[t] || []) if (j.nom) o.push(['pl:' + plKey(j), `${j.nom} ${j.prenom} — élève de l’équipe${j.obs ? ' (' + j.obs + ')' : ''}`]);
+  return o;
+}
+function resolveOff(d, id) {
+  if (!id) return null; const J = DB.ins.jo;
+  if (id.startsWith('man:')) return (d.manual || {})[id.slice(4)] || null;
+  if (id.startsWith('pl:')) { const key = id.slice(3);
+    for (const t of ['A', 'B']) { const j = (d.pl[t] || []).find(x => plKey(x) === key); if (j) { const tm = DB.ins.teams[d[t]], jo = Object.values(J).find(x => samePl(x, j)); return { ...j, etab: tm ? tm.etab : '', njo: jo ? jo.njo : '', niv: jo ? jo.niv : '' }; } }
+    return null; }
+  return J[id] || null;
+}
 function plDialog(mode, t, i) {
   const d = DB.draft, tm = DB.ins.teams[d[t]], cur = d.pl[t], old = mode === 'rep' ? cur[+i] : null;
   const pool = [...Object.values(DB.ins.teams).filter(x => x.as === tm.as).flatMap(x => x.players), ...Object.values(DB.ins.jo).filter(j => j.as === tm.as)];
   CANDS = []; for (const j of pool) if (!cur.some(c => samePl(c, j)) && !CANDS.some(c => samePl(c, j))) CANDS.push({ nom: j.nom, prenom: j.prenom, lic: j.lic });
   ov(`<h3>${mode === 'rep' ? `Remplacer ${esc(old.nom)} ${esc(old.prenom)}` : `Ajouter un élève — équipe ${t}`}</h3>
-  ${CANDS.length ? `<p class="small muted">Licenciés de l’AS ${esc(tm.as)} inscrits sur OPUSS, hors liste :</p><div class="cands">${CANDS.map((c, k) => `<button data-act="pickpl" data-m="${mode}" data-t="${t}" data-i="${esc(i)}" data-c="${k}"><b>${esc(c.nom)}</b> ${esc(c.prenom)}<small>${esc(c.lic)}</small></button>`).join('')}</div>` : ''}
+  ${mode === 'add' ? `<fieldset class="prole"><legend class="small muted">Ajouter comme</legend><label><input type="radio" name="prole" value="joueur" checked> Joueur</label><label><input type="radio" name="prole" value="coach"> Jeune coach (non joueur)</label></fieldset>` : ''}
+  ${CANDS.length ? `<p class="small muted">Licenciés ${esc(tm.as)} inscrits sur OPUSS, hors liste :</p><div class="cands">${CANDS.map((c, k) => `<button data-act="pickpl" data-m="${mode}" data-t="${t}" data-i="${esc(i)}" data-c="${k}"><b>${esc(c.nom)}</b> ${esc(c.prenom)}<small>${esc(c.lic)}</small></button>`).join('')}</div>` : ''}
   <p class="small muted" style="margin-top:12px">Élève présent mais non inscrit sur OPUSS :</p>
   <div class="fields"><label class="f"><span>Nom</span><input id="mnom"></label><label class="f"><span>Prénom</span><input id="mpre"></label><label class="f"><span>Licence UNSS (si connue)</span><input id="mlic" inputmode="numeric"></label></div>
+  ${mode === 'add' ? `
+  <div class="fields coachf"><label class="f"><span>N° JO (jeune coach)</span><input id="mnjo"></label><label class="f"><span>Niveau JO (jeune coach)</span><select id="mniv">${NIV_JO.map(n => `<option value="${n}">${n || '—'}</option>`).join('')}</select></label></div>` : ''}
   <div class="row" style="justify-content:flex-end;margin-top:12px"><button data-act="close">Annuler</button><button class="btn-p" data-act="manpl" data-m="${mode}" data-t="${t}" data-i="${esc(i)}">${mode === 'rep' ? 'Remplacer' : 'Ajouter'}</button></div>`);
 }
 function applyPl(mode, t, i, p, manual) {
   const d = DB.draft, L = d.pl[t], max = SPORTS[d.sport].maxJ;
+  const role = document.querySelector('input[name=prole]:checked');
+  if (mode === 'add' && role && role.value === 'coach') {
+    const ck = COACH[t], tm = DB.ins.teams[d[t]], jo = Object.values(DB.ins.jo).find(x => samePl(x, p));
+    d.manual = d.manual || {}; d.manual[ck] = { nom: p.nom, prenom: p.prenom, lic: p.lic || (jo && jo.lic) || '', njo: ($('#mnjo') && $('#mnjo').value.trim()) || (jo && jo.njo) || '', niv: ($('#mniv') && $('#mniv').value) || (jo && jo.niv) || '', etab: tm ? tm.etab : '', manual };
+    d.off[ck] = 'man:' + ck; save(); ov(''); render(); toast(`${p.nom} ${p.prenom} est jeune coach de l’équipe ${t}`); return;
+  }
   if (mode === 'rep') { const o = L[+i]; L[+i] = { ...p, obs: `remplace ${o.nom} ${o.prenom}`.trim() + (manual ? ' · non inscrit OPUSS' : '') }; toast(`${o.nom} ${o.prenom} remplacé(e) par ${p.nom} ${p.prenom}`); }
   else { L.push({ ...p, obs: manual ? 'ajouté · non inscrit OPUSS' : 'ajouté' }); toast(`${p.nom} ${p.prenom} ajouté(e)${max && L.length > max ? ` — attention : ${L.length} joueurs pour ${max} autorisés` : ''}`, !!(max && L.length > max)); }
   save(); ov(''); render();
@@ -555,7 +581,7 @@ function vPrep() {
   <div class="grid2">${['A', 'B'].map(t => { const tm = DB.ins.teams[d[t]]; return `<div class="card" style="border-top:4px solid var(--${t})"><h3>Équipe ${t}</h3>${sel(t, 'Équipe inscrite', teamOpts, d[t])}
   ${tm ? `<p class="small muted" style="margin:8px 0 4px">${esc(tm.prof ? 'Responsable : ' + tm.prof : '')}</p><div class="plx">${(d.pl[t] || []).map((j, i) => `<div class="px"><input data-d="pl.${t}.${i}.nom" value="${esc(j.nom)}" placeholder="Nom" aria-label="Nom"><input data-d="pl.${t}.${i}.prenom" value="${esc(j.prenom)}" placeholder="Prénom" aria-label="Prénom"><input data-d="pl.${t}.${i}.lic" value="${esc(j.lic)}" placeholder="Licence" aria-label="Licence UNSS" inputmode="numeric"><button data-act="reppl" data-t="${t}" data-i="${i}" title="Remplacer" aria-label="Remplacer ${esc(j.nom)}">⇄</button><button class="btn-d" data-act="delpl" data-t="${t}" data-i="${i}" title="Retirer" aria-label="Retirer ${esc(j.nom)}">×</button>${j.obs ? `<small class="pobs">${esc(j.obs)}</small>` : ''}</div>`).join('') || '<p class="small muted">Aucun joueur dans le fichier pour cette équipe : ajoute-les ci-dessous ou importe l’export OPUSS de son AS.</p>'}</div>
   <div class="row" style="margin:6px 0 12px"><button data-act="addpl" data-t="${t}">+ Ajouter un élève</button><span class="small muted">${(d.pl[t] || []).length}/${SPORTS[d.sport].maxJ || '–'} joueurs</span></div>` : ''}
-  ${sel('off.coach' + (t === 'A' ? '1' : '2'), 'Jeune coach', joOpts, d.off['coach' + (t === 'A' ? '1' : '2')])}</div>`; }).join('')}</div>
+  ${sel('off.' + COACH[t], 'Jeune coach', coachOpts(d, t, joOpts), d.off[COACH[t]])}</div>`; }).join('')}</div>
   <div class="card"><h3>Jeunes officiels</h3><div class="row" style="margin-bottom:10px"><button data-act="autooff">Répartir automatiquement</button><span class="small muted">Arbitres pris de préférence hors des deux équipes ; coachs de chaque AS ; vérifie avant de créer.</span></div>
   <div class="fields">${ROLES[sp.kind].filter(([k]) => !isCoach(k)).map(([k, l]) => sel('off.' + k, l, joOpts, d.off[k])).join('')}</div></div>
   <div class="row" style="justify-content:flex-end"><button data-act="newdraft">Réinitialiser</button><button class="btn-p" data-act="mkprep" style="min-height:52px;font-size:17px" ${d.A && d.B && d.A !== d.B ? '' : 'disabled'}>Créer la feuille pour la table de marque</button></div>`;
@@ -572,7 +598,7 @@ function makePrep() {
   const d = DB.draft, s = blankSheet(d.sport), J = DB.ins.jo;
   Object.assign(s.meta, Object.fromEntries(Object.entries(d.meta).filter(([, v]) => v)));
   for (const t of ['A', 'B']) { const tm = DB.ins.teams[d[t]]; s.teams[t] = { nom: tm.etab || tm.as, as: tm.as, prof: tm.prof || '', players: (d.pl && d.pl['init' + t] === d[t] ? d.pl[t] : tm.players).filter(j => j.nom || j.prenom).map(j => ({ n: '', nom: j.nom, prenom: j.prenom, lic: j.lic, cap: false, gb: false, ...(j.obs ? { obs: j.obs } : {}) })).slice(0, SPORTS[d.sport].maxJ || 99) }; }
-  for (const [k, id] of Object.entries(d.off)) { const j = J[id]; if (j && ROLES[SPORTS[d.sport].kind].some(([r]) => r === k)) s.officiels[k] = { nom: `${j.nom} ${j.prenom}`, etab: j.etab || '', lic: j.lic || '', njo: j.njo || '', niv: j.niv || '' }; }
+  for (const [k, id] of Object.entries(d.off)) { const j = resolveOff(d, id); if (j && ROLES[SPORTS[d.sport].kind].some(([r]) => r === k)) s.officiels[k] = { nom: `${j.nom} ${j.prenom}`, etab: j.etab || '', lic: j.lic || '', njo: j.njo || '', niv: j.niv || '' }; }
   s.prepBy = 'prof'; s.preparedAt = Date.now();
   DB.prep.unshift(s); save(); render(); scrollTo(0, document.body.scrollHeight); toast('Feuille créée : transmets-la à la table de marque.');
 }
