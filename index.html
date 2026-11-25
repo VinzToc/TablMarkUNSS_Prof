@@ -118,6 +118,9 @@ table.list tr.click{cursor:pointer}table.list tr.click:hover td{background:rgba(
 .std th:nth-child(n+2),.std td:nth-child(n+2){text-align:right}
 .std td.pts{font:700 20px var(--cond)}
 .ins{list-style:none;margin:0;padding:0;max-height:220px;overflow:auto;display:grid;gap:4px}.ins li{padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.2)}
+.plx{display:grid;gap:6px;margin:6px 0 4px}.px{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) 44px 44px;gap:6px;align-items:center}.px input{min-height:40px;padding:6px 10px}.px button{padding:0;min-height:40px}.pobs{grid-column:1/-1;margin:-3px 0 2px 4px;font-size:12px;color:var(--c3)}
+.cands{display:flex;flex-wrap:wrap;gap:6px}.cands button{min-height:40px;font-weight:600}.cands small{color:var(--mute);margin-left:6px;font-weight:400}
+@media(max-width:600px){.px{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px 44px}.px>:nth-child(1){grid-area:1/1}.px>:nth-child(2){grid-area:1/2}.px>:nth-child(3){grid-area:2/1/3/3}.px>:nth-child(4){grid-area:1/3}.px>:nth-child(5){grid-area:1/4}.px>.pobs{grid-area:3/1/4/-1}}
 .plist{display:flex;flex-wrap:wrap;gap:5px;margin:4px 0 12px}.plist span{background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:13px}.plist i{font-style:normal;color:var(--mute);margin-left:6px;font-size:11px}
 #dropx.over{border-color:var(--c1)}
 .pts-cfg{display:grid;grid-template-columns:repeat(4,minmax(0,110px));gap:8px}
@@ -315,7 +318,7 @@ function sheetHTML(s) {
       const st = playerStats(s, t), T = s.teams[t];
       h += `<h3>Équipe ${t} — ${esc(teamLabel(s, t))}</h3><p class="sh-small">Responsable : ${esc(T.prof)} · Jeune coach : ${coachTxt(s, t)} · Temps morts : ${tmUsed(s, t)}</p>
       <table class="sh-t"><tr><th>N°</th><th>Nom Prénom</th><th>Licence</th><th>${sp.acts.some(a => a[2] > 1) ? 'Pts' : 'Buts'}</th>${cols.map(c => `<th>${esc(c[1])}</th>`).join('')}</tr>
-      ${st.map(x => `<tr><td>${esc(x.j.n)}${x.j.cap ? ' (C)' : ''}${x.j.gb ? ' GB' : ''}</td><td class="l">${esc(x.j.nom)} ${esc(x.j.prenom)}</td><td>${esc(x.j.lic)}</td><td>${x.pts || ''}</td>${cols.map(c => `<td>${x.c[c[0]] || ''}</td>`).join('')}</tr>`).join('')}</table>`;
+      ${st.map(x => `<tr><td>${esc(x.j.n)}${x.j.cap ? ' (C)' : ''}${x.j.gb ? ' GB' : ''}</td><td class="l">${esc(x.j.nom)} ${esc(x.j.prenom)}${x.j.obs ? ` <small style="color:#a14a00">(${esc(x.j.obs)})</small>` : ''}</td><td>${esc(x.j.lic)}</td><td>${x.pts || ''}</td>${cols.map(c => `<td>${x.c[c[0]] || ''}</td>`).join('')}</tr>`).join('')}</table>`;
     }
     const run = coRunning(s);
     h += `<h3>Déroulé du match</h3><table class="sh-t sh-log"><tr><th>Période</th><th>Temps</th><th>Équipe</th><th>N°</th><th>Action</th><th>Score</th></tr>
@@ -497,9 +500,28 @@ async function importOpuss(files) {
   save(); render();
   toast(`${nT} équipe(s) et ${nJ} jeune(s) officiel(s) importés${bad.length ? ` · ${bad.length} fichier(s) illisible(s)` : ''}`, bad.length > 0);
 }
-function newDraft() { return { sport: 'handball', touched: false, meta: { comp: '', niveau: '', date: today(), heure: '', lieu: '', cat: '', sexe: '', poule: '', num: '' }, A: '', B: '', off: {} }; }
+function newDraft() { return { sport: 'handball', touched: false, meta: { comp: '', niveau: '', date: today(), heure: '', lieu: '', cat: '', sexe: '', poule: '', num: '' }, A: '', B: '', off: {}, pl: { A: [], B: [] } }; }
 const teamOpt = t => `${t.etab || t.as}${t.as ? ' · ' + t.as : ''}${t.num ? ' · éq. ' + t.num : ''} — ${t.players.length} joueur(s)`;
 const joLabel = j => `${j.nom} ${j.prenom} — ${j.role || 'JO'}${j.niv ? ' · ' + j.niv : ''}${j.as ? ' · ' + j.as : ''}`;
+const clonePl = L => L.map(j => ({ nom: j.nom, prenom: j.prenom, lic: j.lic, cat: j.cat || '' }));
+const samePl = (a, b) => (a.lic && b.lic && String(a.lic) === String(b.lic)) || (normKey(a.nom) === normKey(b.nom) && normKey(a.prenom) === normKey(b.prenom));
+let CANDS = [];
+function plDialog(mode, t, i) {
+  const d = DB.draft, tm = DB.ins.teams[d[t]], cur = d.pl[t], old = mode === 'rep' ? cur[+i] : null;
+  const pool = [...Object.values(DB.ins.teams).filter(x => x.as === tm.as).flatMap(x => x.players), ...Object.values(DB.ins.jo).filter(j => j.as === tm.as)];
+  CANDS = []; for (const j of pool) if (!cur.some(c => samePl(c, j)) && !CANDS.some(c => samePl(c, j))) CANDS.push({ nom: j.nom, prenom: j.prenom, lic: j.lic });
+  ov(`<h3>${mode === 'rep' ? `Remplacer ${esc(old.nom)} ${esc(old.prenom)}` : `Ajouter un élève — équipe ${t}`}</h3>
+  ${CANDS.length ? `<p class="small muted">Licenciés de l’AS ${esc(tm.as)} inscrits sur OPUSS, hors liste :</p><div class="cands">${CANDS.map((c, k) => `<button data-act="pickpl" data-m="${mode}" data-t="${t}" data-i="${esc(i)}" data-c="${k}"><b>${esc(c.nom)}</b> ${esc(c.prenom)}<small>${esc(c.lic)}</small></button>`).join('')}</div>` : ''}
+  <p class="small muted" style="margin-top:12px">Élève présent mais non inscrit sur OPUSS :</p>
+  <div class="fields"><label class="f"><span>Nom</span><input id="mnom"></label><label class="f"><span>Prénom</span><input id="mpre"></label><label class="f"><span>Licence UNSS (si connue)</span><input id="mlic" inputmode="numeric"></label></div>
+  <div class="row" style="justify-content:flex-end;margin-top:12px"><button data-act="close">Annuler</button><button class="btn-p" data-act="manpl" data-m="${mode}" data-t="${t}" data-i="${esc(i)}">${mode === 'rep' ? 'Remplacer' : 'Ajouter'}</button></div>`);
+}
+function applyPl(mode, t, i, p, manual) {
+  const d = DB.draft, L = d.pl[t], max = SPORTS[d.sport].maxJ;
+  if (mode === 'rep') { const o = L[+i]; L[+i] = { ...p, obs: `remplace ${o.nom} ${o.prenom}`.trim() + (manual ? ' · non inscrit OPUSS' : '') }; toast(`${o.nom} ${o.prenom} remplacé(e) par ${p.nom} ${p.prenom}`); }
+  else { L.push({ ...p, obs: manual ? 'ajouté · non inscrit OPUSS' : 'ajouté' }); toast(`${p.nom} ${p.prenom} ajouté(e)${max && L.length > max ? ` — attention : ${L.length} joueurs pour ${max} autorisés` : ''}`, !!(max && L.length > max)); }
+  save(); ov(''); render();
+}
 function autoOff(d) {
   const J = Object.values(DB.ins.jo), used = new Set(), A = DB.ins.teams[d.A], B = DB.ins.teams[d.B], off = {};
   const take = (k, list) => { const j = list.find(x => !used.has(joId(x))); if (j) { used.add(joId(j)); off[k] = joId(j); } };
@@ -514,7 +536,8 @@ function autoOff(d) {
 }
 function vPrep() {
   const T = Object.values(DB.ins.teams).sort((a, b) => (a.etab || '').localeCompare(b.etab || '')), J = Object.values(DB.ins.jo);
-  const d = DB.draft || (DB.draft = newDraft()); const sp = SPORTS[d.sport];
+  const d = DB.draft || (DB.draft = newDraft()); const sp = SPORTS[d.sport]; d.pl = d.pl || { A: [], B: [] };
+  for (const t of ['A', 'B']) if (d[t] && !d.pl[t].length && !d.pl['init' + t] && DB.ins.teams[d[t]]) { d.pl[t] = clonePl(DB.ins.teams[d[t]].players); d.pl['init' + t] = d[t]; }
   const sel = (path, label, opts, val) => `<label class="f"><span>${label}</span><select data-d="${path}">${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(val ?? '') ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
   const inp = (path, label, val, type = 'text') => `<label class="f"><span>${label}</span><input type="${type}" data-d="${path}" value="${esc(val)}"></label>`;
   const o2 = a => a.map(x => [x, x]);
@@ -530,7 +553,8 @@ function vPrep() {
   ${inp('meta.date', 'Date', d.meta.date, 'date')}${inp('meta.heure', 'Heure', d.meta.heure, 'time')}${inp('meta.lieu', 'Lieu / gymnase', d.meta.lieu)}
   ${sel('meta.cat', 'Catégorie', o2(['', ...CATS]), d.meta.cat)}${sel('meta.sexe', 'Sexe', o2(['', ...SEXES]), d.meta.sexe)}${inp('meta.poule', 'Poule / tour', d.meta.poule)}${inp('meta.num', 'N° de match', d.meta.num)}</div></div>
   <div class="grid2">${['A', 'B'].map(t => { const tm = DB.ins.teams[d[t]]; return `<div class="card" style="border-top:4px solid var(--${t})"><h3>Équipe ${t}</h3>${sel(t, 'Équipe inscrite', teamOpts, d[t])}
-  ${tm ? `<p class="small muted" style="margin:8px 0 4px">${esc(tm.prof ? 'Responsable : ' + tm.prof : '')}</p><div class="plist">${tm.players.map(j => `<span>${esc(j.nom)} ${esc(j.prenom)}<i>${esc(j.lic)}</i></span>`).join('') || '<span class="muted">Aucun joueur dans le fichier pour cette équipe</span>'}</div>` : ''}
+  ${tm ? `<p class="small muted" style="margin:8px 0 4px">${esc(tm.prof ? 'Responsable : ' + tm.prof : '')}</p><div class="plx">${(d.pl[t] || []).map((j, i) => `<div class="px"><input data-d="pl.${t}.${i}.nom" value="${esc(j.nom)}" placeholder="Nom" aria-label="Nom"><input data-d="pl.${t}.${i}.prenom" value="${esc(j.prenom)}" placeholder="Prénom" aria-label="Prénom"><input data-d="pl.${t}.${i}.lic" value="${esc(j.lic)}" placeholder="Licence" aria-label="Licence UNSS" inputmode="numeric"><button data-act="reppl" data-t="${t}" data-i="${i}" title="Remplacer" aria-label="Remplacer ${esc(j.nom)}">⇄</button><button class="btn-d" data-act="delpl" data-t="${t}" data-i="${i}" title="Retirer" aria-label="Retirer ${esc(j.nom)}">×</button>${j.obs ? `<small class="pobs">${esc(j.obs)}</small>` : ''}</div>`).join('') || '<p class="small muted">Aucun joueur dans le fichier pour cette équipe : ajoute-les ci-dessous ou importe l’export OPUSS de son AS.</p>'}</div>
+  <div class="row" style="margin:6px 0 12px"><button data-act="addpl" data-t="${t}">+ Ajouter un élève</button><span class="small muted">${(d.pl[t] || []).length}/${SPORTS[d.sport].maxJ || '–'} joueurs</span></div>` : ''}
   ${sel('off.coach' + (t === 'A' ? '1' : '2'), 'Jeune coach', joOpts, d.off['coach' + (t === 'A' ? '1' : '2')])}</div>`; }).join('')}</div>
   <div class="card"><h3>Jeunes officiels</h3><div class="row" style="margin-bottom:10px"><button data-act="autooff">Répartir automatiquement</button><span class="small muted">Arbitres pris de préférence hors des deux équipes ; coachs de chaque AS ; vérifie avant de créer.</span></div>
   <div class="fields">${ROLES[sp.kind].filter(([k]) => !isCoach(k)).map(([k, l]) => sel('off.' + k, l, joOpts, d.off[k])).join('')}</div></div>
@@ -547,7 +571,7 @@ function prepList() {
 function makePrep() {
   const d = DB.draft, s = blankSheet(d.sport), J = DB.ins.jo;
   Object.assign(s.meta, Object.fromEntries(Object.entries(d.meta).filter(([, v]) => v)));
-  for (const t of ['A', 'B']) { const tm = DB.ins.teams[d[t]]; s.teams[t] = { nom: tm.etab || tm.as, as: tm.as, prof: tm.prof || '', players: tm.players.map(j => ({ n: '', nom: j.nom, prenom: j.prenom, lic: j.lic, cap: false, gb: false })).slice(0, SPORTS[d.sport].maxJ || 99) }; }
+  for (const t of ['A', 'B']) { const tm = DB.ins.teams[d[t]]; s.teams[t] = { nom: tm.etab || tm.as, as: tm.as, prof: tm.prof || '', players: (d.pl && d.pl['init' + t] === d[t] ? d.pl[t] : tm.players).filter(j => j.nom || j.prenom).map(j => ({ n: '', nom: j.nom, prenom: j.prenom, lic: j.lic, cap: false, gb: false, ...(j.obs ? { obs: j.obs } : {}) })).slice(0, SPORTS[d.sport].maxJ || 99) }; }
   for (const [k, id] of Object.entries(d.off)) { const j = J[id]; if (j && ROLES[SPORTS[d.sport].kind].some(([r]) => r === k)) s.officiels[k] = { nom: `${j.nom} ${j.prenom}`, etab: j.etab || '', lic: j.lic || '', njo: j.njo || '', niv: j.niv || '' }; }
   s.prepBy = 'prof'; s.preparedAt = Date.now();
   DB.prep.unshift(s); save(); render(); scrollTo(0, document.body.scrollHeight); toast('Feuille créée : transmets-la à la table de marque.');
@@ -645,7 +669,8 @@ function demo() {
 }
 document.addEventListener('input', e => {
   if (e.target.dataset && e.target.dataset.d) { const d = DB.draft, k = e.target.dataset.d, v = e.target.value; const ks = k.split('.');
-    if (ks.length === 2) d[ks[0]][ks[1]] = v; else d[k] = v; if (k === 'sport') d.touched = true;
+    if (ks.length > 1) { let o = d; for (const x of ks.slice(0, -1)) o = o[x]; o[ks.at(-1)] = ks[0] === 'pl' && ks.at(-1) === 'nom' ? v.toUpperCase() : v; } else d[k] = v; if (k === 'sport') d.touched = true;
+    if (k === 'A' || k === 'B') { d.pl = d.pl || { A: [], B: [] }; const tm = DB.ins.teams[v]; d.pl[k] = tm ? clonePl(tm.players) : []; d.pl['init' + k] = v; }
     const empty = !Object.values(d.off).some(Boolean); if ((k === 'A' || k === 'B') && d.A && d.B && empty) autoOff(d);
     save(); if (e.target.tagName === 'SELECT') render(); return; }
   if (e.target.id === 'fq') { F.q = e.target.value; const p = e.target.selectionStart; render(); const i = $('#fq'); i.focus(); i.setSelectionRange(p, p); }
@@ -681,6 +706,11 @@ document.addEventListener('click', async e => {
     case 'autooff': autoOff(DB.draft); save(); render(); toast('Jeunes officiels répartis : vérifie les choix.'); break;
     case 'newdraft': DB.draft = newDraft(); save(); render(); break;
     case 'mkprep': makePrep(); break;
+    case 'addpl': plDialog('add', d.t); break;
+    case 'reppl': plDialog('rep', d.t, d.i); break;
+    case 'delpl': { const L = DB.draft.pl[d.t], o = L[+d.i]; ask(`Retirer ${o.nom} ${o.prenom} de la liste de ce match ?`, 'Retirer', () => { L.splice(+d.i, 1); save(); render(); }); } break;
+    case 'pickpl': applyPl(d.m, d.t, d.i, CANDS[+d.c], false); break;
+    case 'manpl': { const nom = $('#mnom').value.trim().toUpperCase(), prenom = cap($('#mpre').value.trim()), lic = $('#mlic').value.trim(); if (!nom) return $('#mnom').focus(); applyPl(d.m, d.t, d.i, { nom, prenom, lic }, true); } break;
     case 'insclear': ask('Vider la base d’inscrits importée d’OPUSS ?', 'Vider', () => { DB.ins = { teams: {}, jo: {}, files: [] }; DB.draft = null; save(); render(); }); break;
     case 'prepdl': { const p = DB.prep[+d.i]; const r = await saveFile('Prepa_' + fileName(p, 'json'), JSON.stringify(p)); if (r !== 'ok') toast('Téléchargement impossible ici : utilise « Code ».', true); } break;
     case 'prepcp': { const p = DB.prep[+d.i]; const c = toCode(p); toast(await copyText(c) ? 'Code copié : colle-le dans TablMarkUNSS Élève.' : 'Copie impossible.', false); } break;
