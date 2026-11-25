@@ -118,7 +118,6 @@ table.list tr.click{cursor:pointer}table.list tr.click:hover td{background:rgba(
 .std th:nth-child(n+2),.std td:nth-child(n+2){text-align:right}
 .std td.pts{font:700 20px var(--cond)}
 .ins{list-style:none;margin:0;padding:0;max-height:220px;overflow:auto;display:grid;gap:4px}.ins li{padding:6px 10px;border-radius:10px;background:rgba(0,0,0,.2)}
-.qrbox{background:#fff;border-radius:16px;padding:10px;width:min(380px,100%);margin:0 auto 10px}.qrbox svg{display:block;width:100%;height:auto}.qrnav{display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:10px}.qrnav b{min-width:64px;text-align:center;font:700 20px var(--cond)}
 .plx{display:grid;gap:6px;margin:6px 0 4px}.px{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) 44px 44px;gap:6px;align-items:center}.px input{min-height:40px;padding:6px 10px}.px button{padding:0;min-height:40px}.pobs{grid-column:1/-1;margin:-3px 0 2px 4px;font-size:12px;color:var(--c3)}
 .prole{border:0;padding:0;margin:12px 0 0;display:flex;gap:16px;flex-wrap:wrap;align-items:center}.prole label{display:flex;gap:6px;align-items:center;font-weight:600}.prole input{width:20px;min-height:20px;accent-color:var(--c1)}
 .coachf{margin-top:8px;display:none}.dlg:has(input[value=coach]:checked) .coachf{display:grid}
@@ -135,7 +134,6 @@ table.list tr.click{cursor:pointer}table.list tr.click:hover td{background:rgba(
 <main id="app"></main>
 <div id="ov"></div><div id="toast" role="status" aria-live="polite"></div><div id="print"></div>
 <script src="lib/jsQR.js"></script>
-<script src="lib/qrcode.js"></script>
 <script>
 /* ===== TablMarkUNSS — noyau commun (élève + prof) ===== */
 const TMU_VERSION = '1.5';
@@ -410,73 +408,6 @@ function qrDecode(txt) {
   }
   for (const x of (f[20] ? f[20].split(';') : [])) { const [i, nom, njo, lic, niv] = x.split(','); const role = ROLES[sp.kind][+i]; if (role) s.officiels[role[0]] = { nom, njo: njo || '', lic: lic || '', niv: NIV_JO[+niv] || '', etab: '' }; }
   return s;
-}
-
-/* ---------- QR codes de la feuille préparée (prof → élève), en plusieurs morceaux ---------- */
-const qrSvg = text => { qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8']; const q = qrcode(0, 'M'); q.addData(text, 'Byte'); q.make(); return q.createSvgTag({ cellSize: 8, margin: 4, scalable: true }); };
-const qsum = t => { let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
-function prepEncode(s) {
-  const sp = SPORTS[s.sport], m = s.meta, asd = x => qc(x).replace(/^AS\s*/i, '');
-  const pre = L => { const ls = L.map(j => String(j.lic || '')).filter(x => /^\d{6,}$/.test(x)); if (ls.length < 2) return ''; let p = ls[0]; for (const l of ls) while (!l.startsWith(p)) p = p.slice(0, -1); return p.length >= 4 ? p.slice(0, Math.min(p.length, 9)) : ''; };
-  const team = t => { const T = s.teams[t], p = pre(T.players);
-    return [qc(T.nom).slice(0, 60), asd(T.as), qc(T.prof).slice(0, 50), p, T.players.map(j => { const l = String(j.lic || ''); return [qc(j.nom).slice(0, 30), qc(j.prenom).slice(0, 24), p && l.startsWith(p) ? '~' + l.slice(p.length) : qc(l), qc(j.n), qc(j.obs).slice(0, 34)].join(',').replace(/,+$/, ''); }).join(';')].join('|'); };
-  const off = ROLES[sp.kind].map(([k], i) => { const o = s.officiels[k] || {}; if (!o.nom) return null; const et = o.etab === s.teams.A.nom ? '@A' : o.etab === s.teams.B.nom ? '@B' : qc(o.etab).slice(0, 40);
-    return [i, qc(o.nom).slice(0, 40), et, qc(o.lic), qc(o.njo), Math.max(0, NIV_JO.indexOf(o.niv))].join(','); }).filter(Boolean).join(';');
-  const parties = sp.kind === 'du' ? s.parties.map(p => [qc(p.lab).slice(0, 20), qc(p.a).slice(0, 40), qc(p.b).slice(0, 40)].join(',')).join(';') : '';
-  return [s.id, QS.indexOf(s.sport), (m.date || '').replace(/-/g, ''), (m.heure || '').replace(':', ''), qc(m.comp).slice(0, 70), NIVEAUX.indexOf(m.niveau), CATS.indexOf(m.cat), SEXES.indexOf(m.sexe),
-    qc(m.poule).slice(0, 24), qc(m.num).slice(0, 12), qc(m.lieu).slice(0, 50), team('A'), team('B'), off, parties, sp.kind === 'du' ? Object.keys(sp.formats).indexOf(s.cfg.format) : ''].join('|');
-}
-function prepChunks(s, size = 300) {
-  const P = prepEncode(s), n = Math.max(1, Math.ceil(P.length / size)), h = qsum(P), out = [];
-  for (let k = 0; k < n; k++) out.push(`TMP1|${h}|${k + 1}|${n}|${P.slice(k * size, (k + 1) * size)}`);
-  return out;
-}
-/* Accumule les morceaux lus ; renvoie {done, got, n, sheet} */
-function prepCollector() {
-  const parts = {}; let N = 0, H = '';
-  return txt => {
-    const m = /^TMP1\|([0-9a-z]+)\|(\d+)\|(\d+)\|([\s\S]*)$/.exec(String(txt || '').trim()); if (!m) throw new Error('ce QR code n’est pas une feuille préparée TablMarkUNSS');
-    if (H && m[1] !== H) { for (const k in parts) delete parts[k]; }
-    H = m[1]; N = +m[3]; parts[+m[2]] = m[4];
-    const got = Object.keys(parts).length;
-    if (got < N) return { done: false, got, n: N, missing: Array.from({ length: N }, (_, i) => i + 1).filter(i => !(i in parts)) };
-    const P = Array.from({ length: N }, (_, i) => parts[i + 1]).join(''); if (qsum(P) !== H) throw new Error('lecture incomplète, recommence le scan');
-    return { done: true, got, n: N, sheet: prepDecode(P) };
-  };
-}
-function prepDecode(P) {
-  const f = P.split('|'); const sport = QS[+f[1]]; if (!sport) throw new Error('activité inconnue');
-  const sp = SPORTS[sport], s = blankSheet(sport), m = s.meta; s.id = f[0]; s.prepBy = 'prof'; s.preparedAt = Date.now();
-  if (/^\d{8}$/.test(f[2])) m.date = `${f[2].slice(0, 4)}-${f[2].slice(4, 6)}-${f[2].slice(6)}`;
-  if (/^\d{4}$/.test(f[3])) m.heure = f[3].slice(0, 2) + ':' + f[3].slice(2);
-  m.comp = f[4]; m.niveau = NIVEAUX[+f[5]] || m.niveau; m.cat = CATS[+f[6]] || m.cat; m.sexe = SEXES[+f[7]] || m.sexe; m.poule = f[8]; m.num = f[9]; m.lieu = f[10];
-  const team = (t, i) => { const [nom, as, prof, pre, pl] = f.slice(i, i + 5); s.teams[t] = { nom, as: as ? 'AS ' + as : '', prof, players: (pl ? pl.split(';') : []).map(x => { const [n1, p1, l, num, obs] = x.split(',');
-    return { n: num || '', nom: n1 || '', prenom: p1 || '', lic: l && l.startsWith('~') ? pre + l.slice(1) : l || '', cap: false, gb: false, ...(obs ? { obs } : {}) }; }) }; };
-  team('A', 11); team('B', 16);
-  for (const x of (f[21] ? f[21].split(';') : [])) { const [i, nom, et, lic, njo, niv] = x.split(','); const r = ROLES[sp.kind][+i];
-    if (r) s.officiels[r[0]] = { nom, etab: et === '@A' ? s.teams.A.nom : et === '@B' ? s.teams.B.nom : et || '', lic: lic || '', njo: njo || '', niv: NIV_JO[+niv] || '' }; }
-  if (sp.kind === 'du') { const fmt = Object.keys(sp.formats)[+f[23]]; if (fmt) { s.cfg.format = fmt; s.parties = mkParties(sport, fmt); }
-    const L = f[22] ? f[22].split(';') : []; if (L.length) s.parties = L.map((x, i) => { const [lab, a, b] = x.split(','); return { ...(s.parties[i] || { h: [], first: 'A', forfeit: '' }), lab, a: a || '', b: b || '', h: [], first: 'A', forfeit: '' }; }); }
-  return s;
-}
-/* Lecture d'un QR code sur une photo (jsQR) */
-async function qrFromImage(file) {
-  if (typeof jsQR === 'undefined') throw new Error('lecteur QR indisponible');
-  const img = await createImageBitmap(file);
-  for (const max of [1200, 800, 1800, 500]) { const cv = document.createElement('canvas'), k = Math.min(1, max / Math.max(img.width, img.height)); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
-    const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0, cv.width, cv.height); const d = cx.getImageData(0, 0, cv.width, cv.height); const r = jsQR(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' }); if (r) return r.data; }
-  throw new Error('aucun QR code trouvé sur la photo');
-}
-/* Scan caméra (BarcodeDetector ou jsQR) : appelle onText à chaque lecture ; renvoie une fonction d'arrêt */
-async function startCamScan(video, onText) {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-  video.srcObject = stream; await video.play();
-  const det = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null, cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
-  let last = '', busy = false;
-  const timer = setInterval(async () => { if (!video.videoWidth || busy) return; busy = true; let txt = null;
-    try { if (det) { const r = await det.detect(video); if (r[0]) txt = r[0].rawValue; } else if (typeof jsQR !== 'undefined') { const k = Math.min(1, 800 / Math.max(video.videoWidth, video.videoHeight)); cv.width = video.videoWidth * k; cv.height = video.videoHeight * k; cx.drawImage(video, 0, 0, cv.width, cv.height); const d = cx.getImageData(0, 0, cv.width, cv.height); const r = jsQR(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' }); if (r) txt = r.data; } } catch (e) { }
-    busy = false; if (txt && txt !== last) { last = txt; onText(txt); } }, 200);
-  return () => { clearInterval(timer); stream.getTracks().forEach(t => t.stop()); };
 }
 
 /* ===== Exports PDF et Excel de la feuille de match (sans bibliothèque, hors ligne) ===== */
@@ -765,7 +696,7 @@ let storageOK = store(KEY, DB);
 let view = 'list', curId = null, F = { q: '', sport: '', cat: '', st: '' };
 const save = () => { storageOK = store(KEY, DB); };
 let tT; function toast(m, warn) { const t = $('#toast'); t.textContent = m; t.className = warn ? 'warn' : ''; t.style.display = 'block'; clearTimeout(tT); tT = setTimeout(() => t.style.display = 'none', 4200); }
-const ov = h => { clearInterval(window.__qrc); $('#ov').innerHTML = h ? `<div class="ov" data-act="ovbg"><div class="dlg" role="dialog" aria-modal="true">${h}</div></div>` : ''; };
+const ov = h => { $('#ov').innerHTML = h ? `<div class="ov" data-act="ovbg"><div class="dlg" role="dialog" aria-modal="true">${h}</div></div>` : ''; };
 let pending = null; function ask(msg, ok, fn) { pending = fn; ov(`<h3>${esc(msg)}</h3><div class="row" style="justify-content:flex-end;margin-top:14px"><button data-act="close">Annuler</button><button class="btn-p" data-act="confirm">${esc(ok)}</button></div>`); }
 const all = () => Object.values(DB.sheets).sort((a, b) => (b.meta.date || '').localeCompare(a.meta.date || '') || (b.meta.heure || '').localeCompare(a.meta.heure || ''));
 
@@ -893,10 +824,10 @@ function vPrep() {
 }
 function prepList() {
   if (!DB.prep.length) return '';
-  return `<h2>Feuilles préparées</h2><p class="small muted">Transmets chaque feuille à la tablette de la table de marque : la tablette scanne le QR code (TablMarkUNSS Élève → « Importer une feuille du prof » → « Scanner le QR code du prof »), ou ouvre le fichier.</p>
+  return `<h2>Feuilles préparées</h2><p class="small muted">Transmets chaque feuille à la tablette de la table de marque : fichier à ouvrir dans TablMarkUNSS Élève (« Importer une feuille du prof »), ou code à coller.</p>
   <div class="card" style="padding:6px 10px"><table class="list stack"><thead><tr><th>Date</th><th>Activité</th><th>Match</th><th>Officiels</th><th></th></tr></thead><tbody>
   ${DB.prep.map((s, i) => `<tr><td>${esc(fmtDate(s.meta.date))} ${esc(s.meta.heure)}</td><td><b>${esc(SPORTS[s.sport].nom)}</b><br><span class="small muted">${esc(s.meta.comp)}</span></td><td>${esc(teamLabel(s, 'A'))} <span class="muted">contre</span> ${esc(teamLabel(s, 'B'))}</td><td class="small">${Object.values(s.officiels).filter(o => o.nom).length} renseigné(s)</td>
-  <td><div class="row" style="justify-content:flex-end"><button class="btn-p" data-act="prepqr" data-i="${i}">QR code</button><button class="btn-b" data-act="prepdl" data-i="${i}">Fichier</button><button class="btn-d" data-act="prepdel" data-i="${i}" aria-label="Supprimer">×</button></div></td></tr>`).join('')}</tbody></table></div>`;
+  <td><div class="row" style="justify-content:flex-end"><button class="btn-b" data-act="prepdl" data-i="${i}">Fichier</button><button data-act="prepcp" data-i="${i}">Code</button><button class="btn-d" data-act="prepdel" data-i="${i}" aria-label="Supprimer">×</button></div></td></tr>`).join('')}</tbody></table></div>`;
 }
 function makePrep() {
   const d = DB.draft, s = blankSheet(d.sport), J = DB.ins.jo;
@@ -1077,18 +1008,6 @@ document.addEventListener('click', async e => {
     case 'manpl': { const nom = $('#mnom').value.trim().toUpperCase(), prenom = cap($('#mpre').value.trim()), lic = $('#mlic').value.trim(); if (!nom) return $('#mnom').focus(); applyPl(d.m, d.t, d.i, { nom, prenom, lic }, true); } break;
     case 'insclear': ask('Vider la base d’inscrits importée d’OPUSS ?', 'Vider', () => { DB.ins = { teams: {}, jo: {}, files: [] }; DB.draft = null; save(); render(); }); break;
     case 'prepdl': { const p = DB.prep[+d.i]; const r = await saveFile('Prepa_' + fileName(p, 'json'), JSON.stringify(p)); if (r !== 'ok') toast('Téléchargement impossible ici : utilise « Code ».', true); } break;
-    case 'prepqr': { if (typeof qrcode === 'undefined') return toast('QR code indisponible : utilise le fichier.', true);
-      const pr = DB.prep[+d.i], Q = prepChunks(pr); let k = 0, run = true;
-      ov(`<h3>QR code de la feuille préparée</h3><p class="small" style="margin:0 0 10px">${esc(teamLabel(pr, 'A'))} <span class="muted">contre</span> ${esc(teamLabel(pr, 'B'))} · ${esc(fmtDate(pr.meta.date))}</p>
-      <div class="qrbox" id="qrc"></div>${Q.length > 1 ? `<div class="qrnav"><button data-act="qrk" data-v="-1" aria-label="QR précédent">‹</button><b id="qrn"></b><button data-act="qrk" data-v="1" aria-label="QR suivant">›</button><button data-act="qrpause" id="qrp">Pause</button></div>` : ''}
-      <p class="small muted">Sur la tablette : <b>TablMarkUNSS Élève → Importer une feuille du prof → Scanner le QR code du prof</b>.${Q.length > 1 ? ` La feuille tient en <b>${Q.length} QR codes</b> qui défilent tout seuls : garde la tablette pointée jusqu’à « Feuille reçue ».` : ''}</p>
-      <p class="small muted">Lecture difficile ? Monte la luminosité de l’écran au maximum et éloigne un peu les appareils.</p><div class="row" style="justify-content:flex-end"><button class="btn-p" data-act="close">Fermer</button></div>`);
-      const show = () => { $('#qrc').innerHTML = qrSvg(Q[k]); const n = $('#qrn'); if (n) n.textContent = `${k + 1} / ${Q.length}`; };
-      window.__qrShow = dv => { k = (k + dv + Q.length) % Q.length; show(); };
-      window.__qrToggle = () => { run = !run; $('#qrp').textContent = run ? 'Pause' : 'Reprendre'; clearInterval(window.__qrc); if (run) window.__qrc = setInterval(() => window.__qrShow(1), 1800); };
-      show(); if (Q.length > 1) window.__qrc = setInterval(() => window.__qrShow(1), 1800); } break;
-    case 'qrk': if (window.__qrShow) window.__qrShow(+d.v); break;
-    case 'qrpause': if (window.__qrToggle) window.__qrToggle(); break;
     case 'prepcp': { const p = DB.prep[+d.i]; const c = toCode(p); toast(await copyText(c) ? 'Code copié : colle-le dans TablMarkUNSS Élève.' : 'Copie impossible.', false); } break;
     case 'prepdel': ask('Supprimer cette feuille préparée ?', 'Supprimer', () => { DB.prep.splice(+d.i, 1); save(); render(); }); break;
     case 'wipe': ask('Effacer toutes les feuilles de ce navigateur ? Pense à faire une sauvegarde avant.', 'Tout effacer', () => { DB.sheets = {}; save(); render(); }); break;
