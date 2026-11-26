@@ -1,6 +1,7 @@
+importScripts('version.js');
 // TablMarkUNSS TablMark Prof — fonctionnement hors ligne
-const CACHE = 'tmu-prof-v1.7.4';
-const SHELL = ['fonts/fonts.css','fonts/barlow-condensed-latin-600-normal.woff2','fonts/barlow-condensed-latin-700-normal.woff2','fonts/barlow-latin-400-normal.woff2','fonts/barlow-latin-600-normal.woff2','footer.js','./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+const CACHE='tmu-prof-v'+APP_VERSION;
+const SHELL = ['fonts/fonts.css','fonts/barlow-condensed-latin-600-normal.woff2','fonts/barlow-condensed-latin-700-normal.woff2','fonts/barlow-latin-400-normal.woff2','fonts/barlow-latin-600-normal.woff2','version.js','nouveautes.json','nouveautes.js','footer.js','./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== CACHE).map(x => caches.delete(x)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
